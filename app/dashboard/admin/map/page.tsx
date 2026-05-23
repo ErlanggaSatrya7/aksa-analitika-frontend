@@ -25,18 +25,106 @@ export default function PetaDistribusiPage() {
     const [dynamicRetailerData, setDynamicRetailerData] = useState<{ name: string, value: number }[]>([]);
     const [localTrend, setLocalTrend] = useState({ isUp: true, value: 12.5 });
 
-    const provincesList = [
-        "DKI Jakarta", "Jawa Timur", "Jawa Barat", "Sumatera Utara",
-        "Sulawesi Selatan", "Bali", "Kalimantan Selatan"
+    // === DATA RIIL: 33 PROVINSI DAN 98 KOTA ===
+    const provinceCityMap: Record<string, string[]> = {
+        "Bali": ["Denpasar"],
+        "Bangka Belitung": ["Pangkal Pinang"],
+        "Banten": ["Cilegon", "Serang", "Tangerang", "Tangerang Selatan"],
+        "Bengkulu": ["Bengkulu"],
+        "DI Yogyakarta": ["Yogyakarta"],
+        "DKI Jakarta": ["Jakarta Barat", "Jakarta Pusat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara"],
+        "Gorontalo": ["Gorontalo"],
+        "Jambi": ["Jambi", "Sungai Penuh"],
+        "Jawa Barat": ["Bandung", "Banjar", "Bekasi", "Bogor", "Cimahi", "Cirebon", "Depok", "Sukabumi", "Tasikmalaya"],
+        "Jawa Tengah": ["Magelang", "Pekalongan", "Salatiga", "Semarang", "Surakarta", "Tegal"],
+        "Jawa Timur": ["Batu", "Blitar", "Kediri", "Madiun", "Malang", "Mojokerto", "Pasuruan", "Probolinggo", "Surabaya"],
+        "Kalimantan Barat": ["Pontianak", "Singkawang"],
+        "Kalimantan Selatan": ["Banjarbaru", "Banjarmasin"],
+        "Kalimantan Tengah": ["Palangka Raya"],
+        "Kalimantan Timur": ["Balikpapan", "Bontang", "Samarinda"],
+        "Kalimantan Utara": ["Tarakan"],
+        "Kepulauan Riau": ["Batam", "Tanjung Pinang"],
+        "Lampung": ["Bandar Lampung", "Metro"],
+        "Maluku": ["Ambon", "Tual"],
+        "Maluku Utara": ["Ternate", "Tidore Kepulauan"],
+        "NAD Aceh": ["Banda Aceh", "Langsa", "Lhokseumawe", "Sabang", "Subulussalam"],
+        "NTB": ["Bima", "Mataram"],
+        "NTT": ["Kupang"],
+        "Papua": ["Jayapura"],
+        "Riau": ["Dumai", "Pekanbaru"],
+        "Sulawesi Barat": ["Mamuju"],
+        "Sulawesi Selatan": ["Makassar", "Palopo", "Parepare"],
+        "Sulawesi Tengah": ["Palu"],
+        "Sulawesi Tenggara": ["Bau-Bau", "Kendari"],
+        "Sulawesi Utara": ["Bitung", "Kotamobagu", "Manado", "Tomohon"],
+        "Sumatera Barat": ["Bukittinggi", "Padang", "Padangpanjang", "Pariaman", "Payakumbuh", "Sawahlunto", "Solok"],
+        "Sumatera Selatan": ["Lubuklinggau", "Pagar Alam", "Palembang", "Prabumulih"],
+        "Sumatera Utara": ["Binjai", "Gunungsitoli", "Medan", "Padangsidempuan", "Pematangsiantar", "Sibolga", "Tanjungbalai", "Tebing Tinggi"]
+    };
+
+    const provincesList = Object.keys(provinceCityMap);
+
+    // === DATA RIIL: 35 PRODUK ===
+    const allProducts = [
+        "Men's Street Footwear", "Men's Athletic Footwear", "Women's Street Footwear", "Women's Athletic Footwear",
+        "Men's Apparel", "Women's Apparel", "Men's Running Shoes", "Men's Basketball Shoes", "Men's Soccer Cleats",
+        "Men's Training Shoes", "Men's Sneakers", "Men's Sandals", "Men's Hoodies", "Men's T-Shirts", "Men's Jackets",
+        "Men's Shorts", "Women's Running Shoes", "Women's Training Shoes", "Women's Yoga Shoes", "Women's Sneakers",
+        "Women's Sandals", "Women's Leggings", "Women's Sports Bras", "Women's Hoodies", "Women's Jackets",
+        "Women's T-Shirts", "Kids Running Shoes", "Kids Sneakers", "Kids Apparel", "Accessories", "Backpacks",
+        "Caps", "Socks", "Water Bottles", "Sports Bags"
     ];
 
     const filteredProvinces = provincesList.filter(prov => prov.toLowerCase().includes(searchProv.toLowerCase()));
-    const NATIONAL_TOTAL = 13500;
+    const NATIONAL_TOTAL = 45500;
+
+    // === TRANSLATOR JSON LAMA KE NAMA STANDAR KITA ===
+    const geojsonNameTranslator: Record<string, string> = {
+        "IRIAN JAYA TIMUR": "Papua",
+        "IRIAN JAYA TENGAH": "Papua",
+        "IRIAN JAYA BARAT": "Papua",
+        "NUSATENGGARA BARAT": "NTB",
+        "NUSA TENGGARA TIMUR": "NTT",
+        "DAERAH ISTIMEWA YOGYAKARTA": "DI Yogyakarta",
+        "PROBANTEN": "Banten",
+        "DI. ACEH": "NAD Aceh",
+        "JAWA TENGAH": "Jawa Tengah",
+        "JAWA TIMUR": "Jawa Timur",
+        "MALUKU UTARA": "Maluku Utara",
+        "MALUKU": "Maluku",
+        "KALIMANTAN SELATAN": "Kalimantan Selatan",
+        "KALIMANTAN BARAT": "Kalimantan Barat",
+        "SULAWESI SELATAN": "Sulawesi Selatan",
+        "DKI JAKARTA": "DKI Jakarta",
+        "JAWA BARAT": "Jawa Barat",
+        "GORONTALO": "Gorontalo",
+        "SULAWESI TENGGARA": "Sulawesi Tenggara",
+        "RIAU": "Riau",
+        "SULAWESI TENGAH": "Sulawesi Tengah",
+        "KALIMANTAN TIMUR": "Kalimantan Timur",
+        "SULAWESI UTARA": "Sulawesi Utara",
+        "SUMATERA UTARA": "Sumatera Utara",
+        "BANGKA BELITUNG": "Bangka Belitung",
+        "SUMATERA BARAT": "Sumatera Barat",
+        "KALIMANTAN TENGAH": "Kalimantan Tengah",
+        "SUMATERA SELATAN": "Sumatera Selatan",
+        "JAMBI": "Jambi",
+        "LAMPUNG": "Lampung",
+        "BENGKULU": "Bengkulu"
+    };
 
     useEffect(() => {
         fetch('/indonesia.json')
             .then((response) => response.json())
             .then((data) => {
+                // SUNTIKAN KODE: Ubah nama provinsi di GeoJSON sebelum di-render
+                data.features.forEach((feature: any) => {
+                    const oldName = feature.properties.Propinsi;
+                    if (geojsonNameTranslator[oldName]) {
+                        feature.properties.Propinsi = geojsonNameTranslator[oldName];
+                    }
+                });
+
                 echarts.registerMap('indonesia_interaktif', data);
                 setDynamicCityData(getCityData('Nasional'));
                 setDynamicProductData(getProductData('Nasional'));
@@ -47,33 +135,50 @@ export default function PetaDistribusiPage() {
     }, []);
 
     const getCityData = (province: string) => {
-        const provLower = province.toLowerCase();
-        if (provLower === 'nasional') return [{ name: 'Jakarta', value: 4500 }, { name: 'Surabaya', value: 3100 }, { name: 'Bandung', value: 2800 }, { name: 'Medan', value: 1900 }, { name: 'Makassar', value: 1200 }];
-        if (provLower.includes('jawa timur')) return [{ name: 'Surabaya', value: 1800 }, { name: 'Malang', value: 800 }, { name: 'Sidoarjo', value: 300 }, { name: 'Gresik', value: 200 }];
-        if (provLower.includes('sumatera utara')) return [{ name: 'Medan', value: 1200 }, { name: 'Pematangsiantar', value: 350 }, { name: 'Binjai', value: 200 }, { name: 'Tebing Tinggi', value: 150 }];
-        if (provLower.includes('jakarta')) return [{ name: 'Jaksel', value: 1500 }, { name: 'Jakpus', value: 1200 }, { name: 'Jakbar', value: 1000 }, { name: 'Jakut', value: 800 }];
+        if (province === 'Nasional') {
+            return [
+                { name: 'Jakarta Selatan', value: 4500 },
+                { name: 'Surabaya', value: 3100 },
+                { name: 'Bandung', value: 2800 },
+                { name: 'Medan', value: 1900 },
+                { name: 'Makassar', value: 1200 },
+                { name: 'Palembang', value: 950 }
+            ];
+        }
 
-        return [{ name: `Kota Utama`, value: Math.floor(Math.random() * 800) + 400 }, { name: `Kota B`, value: Math.floor(Math.random() * 400) + 200 }, { name: `Kota C`, value: Math.floor(Math.random() * 200) + 100 }].sort((a, b) => b.value - a.value);
+        const provKey = Object.keys(provinceCityMap).find(k => k.toUpperCase() === province.toUpperCase());
+        const cities = provKey ? provinceCityMap[provKey] : [];
+
+        if (cities.length === 0) return [];
+
+        return cities.map(city => ({
+            name: city,
+            value: Math.floor(Math.random() * 800) + 200
+        })).sort((a, b) => b.value - a.value).slice(0, 7);
     };
 
     const getProductData = (province: string) => {
-        const provLower = province.toLowerCase();
-        const products = ["Men's Street", "Women's Athletic", "Kids Footwear", "Men's Athletic"];
-        if (provLower === 'nasional') return [{ value: 4200, name: products[0] }, { value: 3100, name: products[1] }, { value: 2800, name: products[2] }, { value: 1900, name: products[3] }];
-        if (provLower.includes('jawa timur')) return [{ value: 1200, name: products[1] }, { value: 900, name: products[0] }, { value: 600, name: products[3] }, { value: 400, name: products[2] }];
+        if (province === 'Nasional') {
+            return [
+                { value: 4200, name: "Men's Street Footwear" },
+                { value: 3100, name: "Women's Apparel" },
+                { value: 2800, name: "Kids Sneakers" },
+                { value: 1900, name: "Accessories" }
+            ];
+        }
 
-        return [
-            { value: Math.floor(Math.random() * 1000) + 500, name: products[0] },
-            { value: Math.floor(Math.random() * 800) + 300, name: products[1] },
-            { value: Math.floor(Math.random() * 600) + 200, name: products[2] }
-        ].sort((a, b) => b.value - a.value);
+        const shuffled = [...allProducts].sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, 4);
+
+        return selected.map(prod => ({
+            name: prod,
+            value: Math.floor(Math.random() * 1000) + 300
+        })).sort((a, b) => b.value - a.value);
     };
 
     const getRetailerData = (province: string) => {
         const provLower = province.toLowerCase();
         if (provLower === 'nasional') return [{ name: 'Ramayana', value: 6800 }, { name: 'Matahari', value: 5200 }, { name: 'Sport Station', value: 3400 }];
-        if (provLower.includes('jawa timur')) return [{ name: 'Matahari', value: 1600 }, { name: 'Ramayana', value: 900 }, { name: 'Sport Station', value: 600 }];
-        if (provLower.includes('sumatera utara')) return [{ name: 'Ramayana', value: 1200 }, { name: 'Sport Station', value: 400 }, { name: 'Matahari', value: 300 }];
 
         return [
             { name: 'Ramayana', value: Math.floor(Math.random() * 800) + 300 },
@@ -113,6 +218,7 @@ export default function PetaDistribusiPage() {
     };
 
     const onChartClick = (params: any) => {
+        // Karena data GeoJSON sudah dimutasi, params.name akan persis sama dengan standard kita (misal: "Jawa Timur")
         if (params.name) triggerDataUpdate(params.name);
     };
 
@@ -133,7 +239,6 @@ export default function PetaDistribusiPage() {
         }, 500);
     };
 
-    // --- CHART OPTIONS (UPDATE: WARNA SELARAS PREMIUM) ---
     const mainMapOption = {
         backgroundColor: 'transparent',
         tooltip: {
@@ -143,7 +248,7 @@ export default function PetaDistribusiPage() {
         },
         visualMap: {
             min: 0, max: 5000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true,
-            inRange: { color: ['#EDF2FE', '#818CF8', '#4f46e5'] }, // Gradasi map lebih dalam
+            inRange: { color: ['#EDF2FE', '#818CF8', '#4f46e5'] },
             textStyle: { color: '#64748B', fontSize: 11, fontWeight: '500' },
             itemWidth: 10, itemHeight: 80, bottom: 20, left: 20,
         },
@@ -152,13 +257,13 @@ export default function PetaDistribusiPage() {
             label: { show: true, color: '#64748B', fontSize: 8, formatter: '{b}' },
             itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1.5 },
             emphasis: { itemStyle: { areaColor: '#818CF8', borderColor: '#4f46e5', borderWidth: 1 }, label: { show: true, color: '#1E1B4B', fontSize: 12, fontWeight: 'bold' } },
-            select: { itemStyle: { areaColor: '#4f46e5' }, label: { show: true, color: '#FFFFFF', fontWeight: 'bold' } }, // Warna klik diselaraskan
-            selectedMode: 'single', data: [
-                { name: 'SUMATERA UTARA', value: 1900 }, { name: 'DKI JAKARTA', value: 4500 },
-                { name: 'JAWA TIMUR', value: 3100 }, { name: 'JAWA BARAT', value: 2800 },
-                { name: 'SULAWESI SELATAN', value: 1200 }, { name: 'BALI', value: 1500 },
-                { name: 'KALIMANTAN SELATAN', value: 800 },
-            ]
+            select: { itemStyle: { areaColor: '#4f46e5' }, label: { show: true, color: '#FFFFFF', fontWeight: 'bold' } },
+            selectedMode: 'single',
+            // Data gradasi di map akan otomatis menarik dari 33 Provinsi yang kita punya
+            data: provincesList.map(prov => ({
+                name: prov,
+                value: Math.floor(Math.random() * 4000) + 500
+            }))
         }]
     };
 
@@ -170,7 +275,7 @@ export default function PetaDistribusiPage() {
         series: [{
             name: 'Volume', type: 'bar', data: dynamicCityData.map(d => d.value).reverse(),
             itemStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }]), // Linear Gradient
+                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }]),
                 borderRadius: [0, 6, 6, 0]
             },
             barWidth: '45%', label: { show: true, position: 'right', formatter: '{c}k', color: '#64748B', fontWeight: '700', fontSize: 12 }
@@ -185,7 +290,7 @@ export default function PetaDistribusiPage() {
         series: [{
             name: 'Retailer', type: 'bar', data: dynamicRetailerData.map(d => d.value).reverse(),
             itemStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#818CF8' }, { offset: 1, color: '#6A7BFA' }]), // Linear Gradient Soft
+                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#818CF8' }, { offset: 1, color: '#6A7BFA' }]),
                 borderRadius: [0, 6, 6, 0]
             },
             barWidth: '45%', label: { show: true, position: 'right', formatter: '{c}k', color: '#64748B', fontWeight: '700', fontSize: 12 }
@@ -198,7 +303,7 @@ export default function PetaDistribusiPage() {
         series: [{
             name: 'Kategori', type: 'pie', radius: ['45%', '70%'], center: ['50%', '40%'], avoidLabelOverlap: true,
             itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 }, label: { show: false },
-            color: ['#312E81', '#4f46e5', '#6A7BFA', '#A3B1FF'], // Kombinasi palet warna baru
+            color: ['#312E81', '#4f46e5', '#6A7BFA', '#A3B1FF'],
             data: dynamicProductData
         }]
     };
@@ -217,7 +322,6 @@ export default function PetaDistribusiPage() {
                 <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
                     <div className="relative w-full sm:w-72 z-[60]">
                         {isDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>}
-                        {/* UPDATE DROPDOWN STYLE */}
                         <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className={`w-full flex items-center justify-between bg-white border ${isDropdownOpen ? 'border-[#6A7BFA] ring-4 ring-[#6A7BFA]/10' : 'border-slate-200'} rounded-[40px] px-5 py-3 text-sm font-bold text-slate-700 hover:border-[#6A7BFA]/50 transition-all shadow-sm z-50 relative`}>
                             <div className="flex items-center gap-2 truncate">
                                 <MapPin size={16} className="text-[#4f46e5] shrink-0" />
@@ -242,7 +346,7 @@ export default function PetaDistribusiPage() {
                                             {filteredProvinces.map(prov => {
                                                 const provUpper = prov.toUpperCase();
                                                 const isSelected = selectedProvince.toUpperCase() === provUpper;
-                                                return <button key={prov} onClick={() => triggerDataUpdate(provUpper)} className={`w-full text-left px-4 py-3 rounded-[16px] text-sm font-bold transition-colors ${isSelected ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>{prov}</button>;
+                                                return <button key={prov} onClick={() => triggerDataUpdate(prov)} className={`w-full text-left px-4 py-3 rounded-[16px] text-sm font-bold transition-colors ${isSelected ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>{prov}</button>;
                                             })}
                                         </>
                                     ) : (
@@ -254,7 +358,6 @@ export default function PetaDistribusiPage() {
                             </div>
                         )}
                     </div>
-                    {/* UPDATE RESET BUTTON STYLE */}
                     <button onClick={handleReset} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-white text-slate-600 border border-slate-200 hover:border-transparent px-6 py-3 rounded-[40px] text-sm font-bold hover:bg-gradient-to-r hover:from-[#6A7BFA] hover:to-[#4f46e5] hover:text-white transition-all shadow-sm active:scale-95 group">
                         <Target size={18} className="text-[#6A7BFA] group-hover:text-white transition-colors" /> Reset
                     </button>
@@ -317,7 +420,7 @@ export default function PetaDistribusiPage() {
                             </div>
                         </div>
 
-                        {/* SISTEM TAB NAVIGASI (UPDATE: PREMIUM GRADIENT ON ACTIVE) */}
+                        {/* SISTEM TAB NAVIGASI */}
                         <div className="flex p-1.5 bg-slate-50 border border-slate-200 rounded-[20px] shrink-0">
                             <button
                                 onClick={() => setActiveTab('kota')}
