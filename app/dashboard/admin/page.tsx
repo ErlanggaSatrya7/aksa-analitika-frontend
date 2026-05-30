@@ -10,16 +10,38 @@ export default function RingkasanNasional() {
     const [activeTrendTab, setActiveTrendTab] = useState<'trend' | 'channel'>('trend');
     const [activePortoTab, setActivePortoTab] = useState<'produk' | 'retailer'>('produk');
 
-    // STATE DATA DINAMIS DARI DATABASE
     const [dashboardData, setDashboardData] = useState<any>(null);
 
     useEffect(() => {
-        // Fetch Peta GeoJSON sekaligus Data Analitik dari Database
         Promise.all([
             fetch('/indonesia.json').then((res) => res.json()),
-            fetch('/api/admin/analytics/dashboard').then((res) => res.json()) // API Baru
+            fetch('/api/admin/analytics/dashboard').then((res) => res.json())
         ])
             .then(([mapData, dbData]) => {
+                // TRANSLATOR GEOJSON -> DATABASE (UPPERCASE)
+                const geojsonNameTranslator: Record<string, string> = {
+                    "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
+                    "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
+                    "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
+                    "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
+                    "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
+                    "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
+                    "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
+                    "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA", "BANGKA BELITUNG": "BANGKA BELITUNG",
+                    "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
+                    "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
+                    "KALIMANTAN UTARA": "KALIMANTAN UTARA", "KEPULAUAN RIAU": "KEPULAUAN RIAU", "BALI": "BALI"
+                };
+
+                mapData.features.forEach((feature: any) => {
+                    const oldName = feature.properties.Propinsi ? feature.properties.Propinsi.toUpperCase() : "";
+                    if (geojsonNameTranslator[oldName]) {
+                        feature.properties.Propinsi = geojsonNameTranslator[oldName];
+                    } else if (oldName) {
+                        feature.properties.Propinsi = oldName;
+                    }
+                });
+
                 echarts.registerMap('indonesia_nasional', mapData);
                 setDashboardData(dbData);
                 setIsLoading(false);
@@ -27,13 +49,19 @@ export default function RingkasanNasional() {
             .catch(() => setIsLoading(false));
     }, []);
 
+    // Memaksa data dari API menjadi UPPERCASE agar 100% cocok dengan peta Echarts
+    const mapDataFormatted = dashboardData?.mapDistribution?.map((d: any) => ({
+        name: d.name.toUpperCase(),
+        value: d.value
+    })) || [];
+
     const miniMapOption = {
         backgroundColor: 'transparent',
         tooltip: { trigger: 'item', backgroundColor: '#ffffff', textStyle: { color: '#0F172A', fontSize: 13 }, borderWidth: 1, borderColor: '#E2E8F0', padding: [10, 14], formatter: (params: any) => `<div style="font-weight:600; font-size:11px; text-transform:uppercase; color:#64748B; margin-bottom:4px;">${params.name || 'Wilayah'}</div><div style="color:#6A7BFA; font-weight:bold; font-size:15px;">${params.value ? (params.value).toLocaleString('id-ID') : 0} Unit</div>` },
-        visualMap: { min: 0, max: 5000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#A3B1FF', '#4f46e5'] }, show: false },
+        visualMap: { min: 0, max: 50000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#A3B1FF', '#4f46e5'] }, show: false },
         series: [{
             name: 'Volume Provinsi', type: 'map', map: 'indonesia_nasional', nameProperty: 'Propinsi', roam: false, label: { show: false }, itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#A3B1FF' }, label: { show: false } },
-            data: dashboardData?.mapDistribution || [] // Data Dinamis
+            data: mapDataFormatted // Menggunakan data yang sudah diformat UPPERCASE
         }]
     };
 
@@ -57,8 +85,8 @@ export default function RingkasanNasional() {
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         grid: { left: '2%', right: '12%', bottom: '5%', top: '10%', containLabel: true },
         xAxis: { type: 'value', show: false },
-        yAxis: { type: 'category', data: dashboardData?.topProducts?.map((d: any) => d.name).reverse() || [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontWeight: '600', color: '#0F172A', fontSize: 12 } },
-        series: [{ name: 'Volume (Unit)', type: 'bar', data: dashboardData?.topProducts?.map((d: any) => d.value).reverse() || [], itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }]), borderRadius: [0, 6, 6, 0] }, barWidth: '45%', label: { show: true, position: 'right', formatter: '{c}', color: '#64748B', fontWeight: '700', fontSize: 12 } }]
+        yAxis: { type: 'category', data: dashboardData?.topProducts?.map((d: any) => d.name).reverse() || [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontWeight: '600', color: '#0F172A', fontSize: 10 } },
+        series: [{ name: 'Volume (Unit)', type: 'bar', data: dashboardData?.topProducts?.map((d: any) => d.value).reverse() || [], itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }]), borderRadius: [0, 6, 6, 0] }, barWidth: '45%', label: { show: true, position: 'right', formatter: '{c}', color: '#64748B', fontWeight: '700', fontSize: 10 } }]
     };
 
     const retailerChartOption = {
@@ -72,7 +100,6 @@ export default function RingkasanNasional() {
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] rounded-[40px] p-8 lg:p-12 relative overflow-hidden flex flex-col md:flex-row items-center justify-between shadow-[0_20px_50px_-15px_rgba(79,70,229,0.4)] animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out group">
-                {/* BANNER TETAP SAMA */}
                 <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-white/10 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none transition-transform duration-1000" />
                 <div className="relative z-10 max-w-3xl text-white">
                     <h2 className="text-[32px] lg:text-[40px] font-bold mb-4 tracking-tight leading-tight">Ringkasan Eksekutif Nasional.<br />Performa Bisnis Real-time.</h2>
@@ -83,7 +110,6 @@ export default function RingkasanNasional() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* TOTAL PENJUALAN */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><ShoppingCart size={24} /></div>
@@ -94,7 +120,6 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
-                {/* MARGIN */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Percent size={24} /></div>
@@ -105,7 +130,6 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
-                {/* INVENTARIS */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Package size={24} /></div>
@@ -117,7 +141,6 @@ export default function RingkasanNasional() {
                 </div>
             </div>
 
-            {/* Sisa UI Bawah Sama, Chart Component akan otomatis render data baru */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col relative overflow-hidden group">
                     <div className="flex items-center gap-3 mb-6 px-2 relative z-10">
@@ -142,7 +165,6 @@ export default function RingkasanNasional() {
                 </div>
             </div>
 
-            {/* TAB BOTTOM (Analisis & Portofolio) */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
                 <div className="bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col h-[480px]">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-2">
