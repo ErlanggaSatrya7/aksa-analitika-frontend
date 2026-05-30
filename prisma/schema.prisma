@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DIRECT_URL")
+}
+
+model users {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  fullName      String
+  role          Role
+  assignedState String?
+  assignedCity  String?
+  retailerId    String?
+  password      String?
+  status        UserStatus      @default(INVITED)
+  token         String?
+  notifications notifications[]
+  retailer      retailers?      @relation(fields: [retailerId], references: [id])
+}
+
+model retailers {
+  id              String            @id @default(uuid()) // Tambahkan ini
+  name              String
+  region            String
+  state             String
+  city              String
+  logistic_requests logistic_requests[]
+  sales_data        sales_data[]
+  users             users[]
+}
+
+model sales_data {
+  id              String    @id @default(uuid())
+  retailerId      String
+  invoiceDate     DateTime  @db.Timestamptz(6)
+  product         String
+  pricePerUnit    Float
+  unitsSold       Int
+  totalSales      Float
+  operatingProfit Float
+  operatingMargin Float
+  salesMethod     String
+  retailer        retailers @relation(fields: [retailerId], references: [id])
+
+  @@index([invoiceDate])
+  @@index([retailerId])
+}
+
+model logistic_requests {
+  id              String         @id @default(uuid())
+  retailerId      String
+  productCategory String
+  qtyRequested    Int
+  status          LogisticStatus @default(PENDING_CITY)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  retailer        retailers      @relation(fields: [retailerId], references: [id])
+}
+
+model notifications {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  description String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  user        users    @relation(fields: [userId], references: [id])
+}
+
+enum Role {
+  DATA_ENGINEER
+  SUPER_ADMIN
+  STATE_ADMIN
+  CITY_ADMIN
+  RETAILER_ADMIN
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED // <-- Tambahkan baris ini
+}
+
+enum LogisticStatus {
+  PENDING_CITY
+  APPROVED_CITY
+  APPROVED_STATE
+  APPROVED_CENTER
+  REJECTED
+}

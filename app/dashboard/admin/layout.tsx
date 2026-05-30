@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import {
     BarChart3, Map as MapIcon, TrendingUp, Users, LogOut, ShieldCheck,
     Download, Bot, X, Send, AlertTriangle, CheckCircle2, Menu, Settings,
@@ -12,13 +13,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const pathname = usePathname();
     const router = useRouter();
 
+    // MENGAMBIL DATA SESI DINAMIS DARI NEXTAUTH
+    const { data: session } = useSession();
+
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
 
     // State Logout Modal
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-    // State Notifications (BARU)
+    // State Notifications
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const notifRef = useRef<HTMLDivElement>(null);
 
@@ -34,7 +38,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
 
-    // Data Dummy Notifikasi Super Admin (BARU)
+    // Data Dummy Notifikasi Super Admin
     const notifications = [
         { id: 1, title: 'Eskalasi Dana Logistik', desc: 'Manager SUMUT mengajukan tambahan anggaran Rp 2M untuk logistik.', time: '10 Menit yang lalu', isRead: false, icon: <AlertTriangle size={16} className="text-amber-500" />, bg: 'bg-amber-50' },
         { id: 2, title: 'Laporan Prediksi AI', desc: 'Sistem mendeteksi potensi krisis stok di 3 provinsi pada kuartal depan.', time: '1 Jam yang lalu', isRead: false, icon: <BrainCircuit size={16} className="text-red-500" />, bg: 'bg-red-50' },
@@ -61,7 +65,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setCurrentLocation(location);
     }, []);
 
-    // Handle klik di luar pop-up notifikasi (BARU)
+    // Handle klik di luar pop-up notifikasi
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
@@ -72,7 +76,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleLogout = () => router.push('/');
+    const handleLogout = async () => {
+        await signOut({ callbackUrl: '/' });
+    };
+
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
     const showToast = (message: string, type: 'success' | 'warning') => {
@@ -95,6 +102,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             setIsAiTyping(false);
         }, 2000);
     };
+
+    // Fungsi Format Role agar rapi
+    const formatRole = (role?: string) => {
+        if (role === 'SUPER_ADMIN') return 'Super Admin';
+        if (role === 'STATE_ADMIN') return 'Admin Provinsi';
+        if (role === 'CITY_ADMIN') return 'Kepala Cabang';
+        if (role === 'RETAILER_ADMIN') return 'Manajer Retailer';
+        if (role === 'DATA_ENGINEER') return 'Data Engineer';
+        return 'Pengguna';
+    };
+
+    // Variabel Dinamis
+    const firstName = session?.user?.name?.split(' ')[0] || 'User';
+    // Menggunakan email sebagai seed avatar agar selalu unik dan muncul walau ID tidak terbaca
+    const avatarSeed = session?.user?.email || 'default-user';
 
     return (
         <div className="flex h-[100dvh] w-full bg-[#F4F7FE] overflow-hidden font-sans text-slate-600 relative">
@@ -169,14 +191,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         );
                     })}
 
-                    <div className="pt-6 mt-6 border-t border-slate-100">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3">Management</div>
-                        <Link href="/dashboard/admin/users" onClick={() => setIsMobileMenuOpen(false)}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-[40px] text-sm font-semibold transition-colors duration-200 ${pathname.includes('/users') ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md shadow-[#4f46e5]/30' : 'text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5] group'}`}>
-                            <div className={pathname.includes('/users') ? 'text-white' : 'text-slate-400 group-hover:text-[#4f46e5] transition-colors'}><Users size={20} /></div>
-                            User Management
-                        </Link>
-                    </div>
+                    {/* Menu ini HANYA TAMPIL untuk SUPER_ADMIN (Opsional, sesuaikan dengan logicmu) */}
+                    {session?.user?.role === 'SUPER_ADMIN' && (
+                        <div className="pt-6 mt-6 border-t border-slate-100">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-3">Management</div>
+                            <Link href="/dashboard/admin/users" onClick={() => setIsMobileMenuOpen(false)}
+                                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-[40px] text-sm font-semibold transition-colors duration-200 ${pathname.includes('/users') ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md shadow-[#4f46e5]/30' : 'text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5] group'}`}>
+                                <div className={pathname.includes('/users') ? 'text-white' : 'text-slate-400 group-hover:text-[#4f46e5] transition-colors'}><Users size={20} /></div>
+                                User Management
+                            </Link>
+                        </div>
+                    )}
                 </nav>
 
                 <div className="px-2 mt-4 mb-2 shrink-0">
@@ -185,15 +210,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </button>
                 </div>
 
-                {/* PROFILE WIDGET BOTTOM */}
+                {/* PROFILE WIDGET DINAMIS BERDASARKAN DATABASE */}
                 <div className="relative px-2 pt-4 border-t border-slate-100 shrink-0">
                     <Link href="/dashboard/admin/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=admin-budi" alt="Profile" className="w-10 h-10 rounded-full object-cover bg-slate-200 shadow-sm border-2 border-white group-hover:scale-105 transition-transform" />
+                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${session?.user?.email}`} alt="Profile" className="w-10 h-10 rounded-full object-cover bg-slate-200 shadow-sm border-2 border-white group-hover:scale-105 transition-transform" />
                             <div className="overflow-hidden">
-                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>Budi Santoso</p>
-                                <p className="text-[11px] text-slate-500 font-medium truncate">Super Admin</p>
+                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>
+                                    {session?.user?.name || 'Memuat...'}
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-medium truncate">
+                                    {formatRole(session?.user?.role as string)}
+                                </p>
                             </div>
                         </div>
                         <Settings size={16} className={`transition-all duration-300 ${pathname.includes('/profile') ? 'text-[#4f46e5] rotate-45' : 'text-slate-400 group-hover:text-[#4f46e5] group-hover:rotate-45'}`} />
@@ -222,7 +251,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                 <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                             </button>
                             <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer hidden sm:block">
-                                <img src="https://api.dicebear.com/7.x/notionists/svg?seed=admin-budi" alt="Profile" className="w-full h-full object-cover" />
+                                <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-full h-full object-cover" />
                             </div>
                         </div>
                     </div>
@@ -230,8 +259,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {/* KHUSUS DESKTOP HEADER */}
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
+                            {/* Sapaan nama dinamis */}
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Pengaturan Akun' : `${greeting}, Budi! 👋`}
+                                {pathname.includes('/profile') ? 'Pengaturan Akun' : `${greeting}, ${firstName}! 👋`}
                             </h2>
                             <p className="text-xs font-medium text-slate-500 mt-1">Akses Penuh Portal Eksekutif</p>
                         </div>

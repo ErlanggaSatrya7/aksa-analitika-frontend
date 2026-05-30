@@ -1,20 +1,41 @@
-// middleware.ts di root project
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+    import { withAuth } from "next-auth/middleware";
+    import { NextResponse } from "next/server";
 
-export function middleware(request: NextRequest) {
-    const token = request.cookies.get('aksa_token')?.value
-    const isDashboardPage = request.nextUrl.pathname.startsWith('/dashboard')
+    export default withAuth(
+        function middleware(req) {
+            const token = req.nextauth.token;
+            const path = req.nextUrl.pathname;
+            const role = token?.role as string | undefined;
 
-    // Jika mencoba masuk dashboard tapi tidak ada token, tendang ke login
-    if (isDashboardPage && !token) {
-        return NextResponse.redirect(new URL('/', request.url))
-    }
+            // PROTEKSI 1: Rute Admin HANYA untuk SUPER_ADMIN (Boss)
+            if (path.startsWith("/dashboard/admin") && role !== "SUPER_ADMIN") {
+                return NextResponse.redirect(new URL("/dashboard", req.url));
+            }
 
-    return NextResponse.next()
-}
+            // PROTEKSI 2: Rute Cabang untuk CITY_ADMIN (dan Boss bisa akses jika perlu)
+            if (path.startsWith("/dashboard/cabang") && role !== "CITY_ADMIN" && role !== "SUPER_ADMIN") {
+                return NextResponse.redirect(new URL("/dashboard", req.url));
+            }
 
-export const config = {
-    // Pastikan matcher mencakup semua halaman kecuali file statis (image, favicon, dll)
-    matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
-}
+            // PROTEKSI 3: Rute Retailer untuk RETAILER_ADMIN (dan Boss bisa akses)
+            if (path.startsWith("/dashboard/retailer") && role !== "RETAILER_ADMIN" && role !== "SUPER_ADMIN") {
+                return NextResponse.redirect(new URL("/dashboard", req.url));
+            }
+
+            // PROTEKSI 4: Rute Provinsi untuk STATE_ADMIN (dan Boss bisa akses)
+            if (path.startsWith("/dashboard/provinsi") && role !== "STATE_ADMIN" && role !== "SUPER_ADMIN") {
+                return NextResponse.redirect(new URL("/dashboard", req.url));
+            }
+
+            return NextResponse.next();
+        },
+        {
+            callbacks: {
+                authorized: ({ token }) => !!token, // Hanya izinkan jika user sudah login
+            },
+        }
+    );
+
+    export const config = {
+        matcher: ["/dashboard/:path*"], // Melindungi semua rute di dalam dashboard
+    };

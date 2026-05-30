@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+// 1. Import Provider untuk NextAuth
+import Providers from "./providers";
 
 // Konfigurasi Font Inter (Untuk Body/Data)
 const inter = Inter({
@@ -15,7 +17,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "AKSA Analitika | Painkiller BI",
+  title: "AKSA Analitika",
   description: "Advanced Business Intelligence with Gemma 4 AI",
 };
 
@@ -27,11 +29,13 @@ export default function RootLayout({
   return (
     <html lang="id" suppressHydrationWarning>
       <body
-        // antialiased akan membuat font jauh lebih tajam (crisp) di semua layar
         className={`${inter.variable} ${jakarta.variable} font-sans bg-canvas text-body antialiased selection:bg-primary/20 selection:text-primary`}
         suppressHydrationWarning={true}
       >
-        {children}
+        {/* 2. Bungkus {children} dengan Providers agar useSession bisa terbaca */}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
