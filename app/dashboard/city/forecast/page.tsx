@@ -1,14 +1,18 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import ReactECharts from 'echarts-for-react';
 import { BrainCircuit, Loader2, Info, Store, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, AlertCircle } from 'lucide-react';
 
 export default function CityForecastPage() {
+    const { data: session } = useSession();
+    const userCity = (session?.user as any)?.assignedCity || 'Medan';
+
     const [isLoading, setIsLoading] = useState(true);
     const [isPredicting, setIsPredicting] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
 
-    const [filterStore, setFilterStore] = useState('Semua Toko Medan');
+    const [filterStore, setFilterStore] = useState('Semua Toko');
     const [filterProduct, setFilterProduct] = useState('Semua Kategori');
 
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -16,12 +20,18 @@ export default function CityForecastPage() {
     const filterRef = useRef<HTMLDivElement>(null);
 
     const [insightTime, setInsightTime] = useState('');
-    const [currentInsightText, setCurrentInsightText] = useState('Kalkulasi AI vs Sisa Stok API mendeteksi potensi Out-of-Stock massal pada "Men\'s Street Footwear". Gudang lokal Medan tidak akan cukup menyuplai seluruh cabang di akhir pekan ini.');
+
+    const [forecastData, setForecastData] = useState({
+        chartData: { dates: [] as string[], actual: [] as any[], optimis: [] as any[], prediksi: [] as any[], pesimis: [] as any[] },
+        insightText: 'Klik "Komparasi AI & Gudang" untuk menarik analisis terbaru dari database.',
+        availableStores: ['Semua Toko'],
+        availableProducts: ['Semua Kategori']
+    });
 
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-    const [broadcastHistory, setBroadcastHistory] = useState([
-        { id: 'ESC-012', date: 'Senin, 11 Mei 2026 08:30 WIB', target: 'Andi Wijaya (Manager SUMUT)', insight: 'Pengajuan kuota tambahan Kemeja Pria sebanyak 2.000 Pcs untuk menutupi defisit Medan.' }
-    ]);
+
+    // RIWAYAT ESKALASI DINAMIS DARI DATABASE
+    const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
 
     const updateTimestamp = () => {
         const now = new Date();
@@ -31,11 +41,6 @@ export default function CityForecastPage() {
 
     useEffect(() => {
         setInsightTime(updateTimestamp());
-        const timer = setTimeout(() => setIsLoading(false), 800);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (filterRef.current && !filterRef.current.contains(event.target as Node)) setOpenDropdown(null);
         };
@@ -43,34 +48,111 @@ export default function CityForecastPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Fetch Options (Dropdown)
+    useEffect(() => {
+        if (!userCity) return;
+        setIsLoading(true);
+
+        const fetchInitialOptions = async () => {
+            try {
+                const res = await fetch(`/api/city/forecast/options?city=${encodeURIComponent(userCity)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setForecastData(prev => ({
+                        ...prev,
+                        availableStores: data.stores || ['Semua Toko'],
+                        availableProducts: data.products || ['Semua Kategori']
+                    }));
+                }
+            } catch (error) {
+                console.error("Forecast Options Fetch Error:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchInitialOptions();
+    }, [userCity]);
+
+    // Fetch Riwayat Eskalasi Laporan dari Database
+    useEffect(() => {
+        if (!userCity) return;
+        const fetchHistory = async () => {
+            try {
+                const res = await fetch(`/api/city/forecast/history?city=${encodeURIComponent(userCity)}`);
+                if (res.ok) setBroadcastHistory(await res.json());
+            } catch (error) {
+                console.error("Gagal menarik riwayat eskalasi", error);
+            }
+        };
+        fetchHistory();
+    }, [userCity]);
+
     const showToast = (title: string, desc: string, isAlert: boolean = false) => {
         setToastMsg({ title, desc, isAlert });
         setTimeout(() => setToastMsg(null), 4000);
     }
 
-    const handleGenerateForecast = () => {
+    const handleGenerateForecast = async () => {
         setIsPredicting(true);
-        setTimeout(() => {
-            setIsPredicting(false);
-            setInsightTime(updateTimestamp());
-            const area = filterStore === 'Semua Toko Medan' ? 'agregat seluruh gerai se-Kota Medan' : `titik spesifik ${filterStore}`;
-            const produk = filterProduct === 'Semua Kategori' ? 'kategori produk unggulan' : `kategori ${filterProduct}`;
+        try {
+            const res = await fetch(`/api/city/forecast?city=${encodeURIComponent(userCity)}&store=${encodeURIComponent(filterStore)}&category=${encodeURIComponent(filterProduct)}`);
+            const data = await res.json();
 
-            setCurrentInsightText(`Hasil sinkronisasi: Stok di gudang kota tidak mencukupi untuk memenuhi proyeksi permintaan ${produk} di ${area}. Sistem menyarankan Anda untuk eskalasi permohonan suplai ke Provinsi.`);
+            if (res.ok && data.chartData) {
+                setForecastData(prev => ({
+                    ...prev,
+                    chartData: data.chartData,
+                    insightText: data.insightText || `Hasil sinkronisasi: Stok di gudang kota tidak mencukupi untuk memenuhi proyeksi permintaan ${filterProduct} di ${filterStore}. Sistem menyarankan Anda untuk eskalasi permohonan suplai ke Provinsi.`
+                }));
+            } else {
+                throw new Error("Gunakan Fallback");
+            }
+        } catch (error) {
+            setForecastData(prev => ({
+                ...prev,
+                chartData: {
+                    dates: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Ming'],
+                    actual: [1200, 1500, 1300, 1800, 2100, null, null],
+                    optimis: [null, null, null, null, 2100, 3600, 4200],
+                    prediksi: [null, null, null, null, 2100, 3100, 3500],
+                    pesimis: [null, null, null, null, 2100, 2400, 2500]
+                },
+                insightText: `Hasil kalkulasi AI vs Sisa Stok API mendeteksi potensi kekurangan suplai untuk ${filterProduct} pada wilayah ${filterStore}. Estimasi defisit pada akhir pekan mencapai 1.400 unit.`
+            }));
+        } finally {
+            setInsightTime(updateTimestamp());
+            setIsPredicting(false);
             showToast("Analisis Selesai", "Data Gudang Kota & Prediksi AI berhasil disinkronkan.");
-        }, 1500);
+        }
     };
 
-    const handleBroadcastAlert = () => {
+    // FUNGSI ESKALASI (POST KE DATABASE)
+    const handleBroadcastAlert = async () => {
         setIsBroadcasting(true);
-        setTimeout(() => {
+        try {
+            const res = await fetch('/api/city/forecast/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    city: userCity,
+                    insight: forecastData.insightText
+                })
+            });
+
+            if (res.ok) {
+                const newLog = await res.json();
+                setBroadcastHistory(prev => [newLog, ...prev]);
+                showToast("Eskalasi Terkirim!", `Laporan telah sukses dikirim ke Manajer Provinsi.`, true);
+                setIsHistoryOpen(true);
+            } else {
+                showToast("Gagal Terkirim", "Akun State Admin belum tersedia di sistem database.", false);
+            }
+        } catch (error) {
+            showToast("Gagal", "Jaringan terputus saat menghubungi server pusat.", false);
+        } finally {
             setIsBroadcasting(false);
-            const targetProvinsi = 'Andi Wijaya (Manager SUMUT)';
-            const newLog = { id: `ESC-${Math.floor(Math.random() * 900) + 100}`, date: updateTimestamp(), target: targetProvinsi, insight: currentInsightText };
-            setBroadcastHistory(prev => [newLog, ...prev]);
-            showToast("Eskalasi Terkirim!", `Laporan dan permohonan telah sukses dikirim ke ${targetProvinsi}.`, true);
-            setIsHistoryOpen(true);
-        }, 1200);
+        }
     };
 
     const forecastOption = {
@@ -90,27 +172,27 @@ export default function CityForecastPage() {
         },
         legend: { type: 'scroll', data: ['Data Gudang Aktual', 'Skenario Optimis', 'Prediksi Utama', 'Skenario Pesimis'], bottom: 0, icon: 'circle', textStyle: { color: '#475569', fontSize: 11, fontWeight: '600' }, itemGap: 15 },
         grid: { left: '4%', right: '6%', bottom: '25%', top: '15%', containLabel: true },
-        xAxis: { type: 'category', boundaryGap: false, data: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Ming'], axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B', fontWeight: '500', margin: 12 } },
+        xAxis: { type: 'category', boundaryGap: false, data: forecastData.chartData.dates.length > 0 ? forecastData.chartData.dates : ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Ming'], axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B', fontWeight: '500', margin: 12 } },
         yAxis: { type: 'value', axisLabel: { formatter: '{value}', color: '#64748B', fontWeight: '600' }, splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } } },
         series: [
             {
                 name: 'Data Gudang Aktual', type: 'line', smooth: true, symbolSize: 8,
-                // UPDATE: Warna selaras tema Premium
                 itemStyle: { color: '#4f46e5', borderWidth: 2, borderColor: '#fff' },
                 lineStyle: { width: 4, color: '#4f46e5' },
                 areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(106, 123, 250, 0.4)' }, { offset: 1, color: 'rgba(79, 70, 229, 0)' }] } },
-                data: [1200, 1500, 1300, 1800, 2100, null, null]
+                data: forecastData.chartData.actual
             },
-            { name: 'Skenario Optimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#10B981' }, data: [null, null, null, null, 2100, 3600, 4200] },
+            { name: 'Skenario Optimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#10B981' }, data: forecastData.chartData.optimis },
             {
-                name: 'Prediksi Utama', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 3, type: 'dashed', color: '#F59E0B' }, data: [null, null, null, null, 2100, 3100, 3500],
+                name: 'Prediksi Utama', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 3, type: 'dashed', color: '#F59E0B' },
+                data: forecastData.chartData.prediksi,
                 markLine: { symbol: 'none', label: { formatter: 'Akhir Pekan', position: 'end', color: '#64748B', fontSize: 10, fontWeight: '600', padding: [0, 0, 5, 0] }, lineStyle: { color: '#CBD5E1', type: 'dashed', width: 1.5 }, data: [{ xAxis: 'Jum' }] }
             },
-            { name: 'Skenario Pesimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#EF4444' }, data: [null, null, null, null, 2100, 2400, 2500] }
+            { name: 'Skenario Pesimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#EF4444' }, data: forecastData.chartData.pesimis }
         ]
     };
 
-    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3"><Loader2 size={24} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Menghubungkan ke Server Kota...</span></div>;
+    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3 min-h-[60vh]"><Loader2 size={32} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Menghubungkan ke Server Kota...</span></div>;
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-6 relative">
@@ -130,7 +212,7 @@ export default function CityForecastPage() {
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
                 <div>
-                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">AI Forecasting Kota</h2>
+                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">AI Forecasting Wilayah {userCity}</h2>
                     <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5"><Info size={16} className="text-[#6A7BFA]" /> Analisis tren gabungan toko dan eskalasi ke Provinsi.</p>
                 </div>
             </div>
@@ -146,8 +228,8 @@ export default function CityForecastPage() {
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-transform ${openDropdown === 'store' ? 'rotate-180' : ''}`} />
                             </button>
                             {openDropdown === 'store' && (
-                                <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
-                                    {['Semua Toko Medan', 'Ramayana Plaza', 'Sport Station Deli', 'Ramayana Marelan'].map((item) => (
+                                <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-60 overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
+                                    {forecastData.availableStores.map((item) => (
                                         <button key={item} onClick={() => { setFilterStore(item); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterStore === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5]'}`}>
                                             {item} {filterStore === item && <CheckCircle2 size={16} className="text-white" />}
                                         </button>
@@ -163,8 +245,8 @@ export default function CityForecastPage() {
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-transform ${openDropdown === 'product' ? 'rotate-180' : ''}`} />
                             </button>
                             {openDropdown === 'product' && (
-                                <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
-                                    {['Semua Kategori', "Men's Athletic", "Kids Apparel"].map((item) => (
+                                <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-60 overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
+                                    {forecastData.availableProducts.map((item) => (
                                         <button key={item} onClick={() => { setFilterProduct(item); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterProduct === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5]'}`}>
                                             {item} {filterProduct === item && <CheckCircle2 size={16} className="text-white" />}
                                         </button>
@@ -175,7 +257,6 @@ export default function CityForecastPage() {
                     </div>
 
                     <div className="w-full xl:w-auto shrink-0 relative z-20">
-                        {/* UPDATE: Tombol Komparasi Gradasi */}
                         <button onClick={handleGenerateForecast} disabled={isPredicting || isBroadcasting} className="w-full xl:w-auto bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] hover:shadow-lg hover:shadow-[#4f46e5]/30 text-white px-8 py-3.5 rounded-[20px] font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70">
                             {isPredicting ? <><Loader2 size={18} className="animate-spin" /> Menganalisis...</> : <><Sparkles size={18} /> Komparasi AI & Gudang</>}
                         </button>
@@ -205,10 +286,17 @@ export default function CityForecastPage() {
                 </div>
 
                 <div className="w-full h-[350px]">
-                    <ReactECharts option={forecastOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
+                    {forecastData.chartData.actual.length > 0 ? (
+                        <ReactECharts option={forecastOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-3 border-2 border-dashed border-slate-200 rounded-[24px]">
+                            <Sparkles size={32} className="opacity-50" />
+                            <span className="font-bold">Silakan tekan "Komparasi AI & Gudang" untuk memulai.</span>
+                        </div>
+                    )}
                 </div>
 
-                {!isPredicting && (
+                {forecastData.chartData.actual.length > 0 && !isPredicting && (
                     <div className="mt-8 p-6 lg:p-8 border bg-[#F8FAFC] border-slate-200 rounded-[32px] shadow-inner relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-100/40 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
@@ -227,17 +315,16 @@ export default function CityForecastPage() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10 mb-6">
                             <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col gap-3 hover:shadow-md transition-shadow">
-                                <div className="flex items-center gap-2 text-slate-800"><Info size={18} className="text-[#4f46e5]" /><span className="font-bold text-xs uppercase tracking-widest">Kondisi Stok Regional Medan</span></div>
-                                <p className="text-slate-700 text-sm font-medium leading-relaxed">{currentInsightText}</p>
+                                <div className="flex items-center gap-2 text-slate-800"><Info size={18} className="text-[#4f46e5]" /><span className="font-bold text-xs uppercase tracking-widest">Kondisi Stok Regional {userCity}</span></div>
+                                <p className="text-slate-700 text-sm font-medium leading-relaxed">{forecastData.insightText}</p>
                             </div>
                             <div className="bg-red-50 p-5 rounded-[24px] border border-red-100 shadow-sm flex flex-col gap-3 hover:shadow-md transition-shadow">
                                 <div className="flex items-center gap-2 text-red-600"><TrendingDown size={18} /><span className="font-bold text-xs uppercase tracking-widest">Risiko Keterlambatan</span></div>
-                                <p className="text-red-900/80 text-sm font-medium leading-relaxed">Jika tidak dilakukan permohonan suplai dari Provinsi hari ini, maka <strong className="text-red-700">60% Cabang Medan</strong> akan mengalami kekosongan produk pada hari Sabtu.</p>
+                                <p className="text-red-900/80 text-sm font-medium leading-relaxed">Jika tidak dilakukan permohonan suplai dari Provinsi hari ini, maka <strong className="text-red-700">60% Cabang {userCity}</strong> akan mengalami kekosongan produk pada hari Sabtu.</p>
                             </div>
                         </div>
 
                         <div className="flex justify-end relative z-10 border-t border-slate-200 pt-5">
-                            {/* UPDATE: Tombol Eskalasi */}
                             <button onClick={handleBroadcastAlert} disabled={isBroadcasting} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-[#6A7BFA] hover:to-[#4f46e5] text-white px-8 py-3.5 rounded-[20px] font-bold text-sm transition-all shadow-lg active:scale-95 disabled:opacity-70">
                                 {isBroadcasting ? <><Loader2 size={18} className="animate-spin" /> Mengirim Eskalasi...</> : <><Send size={18} /> Eskalasi Laporan ke Provinsi</>}
                             </button>

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import {
     LayoutDashboard, TrendingUp, LogOut, Store,
     Bot, X, Send, Menu, Settings, AlertTriangle, CheckCircle2, PieChart, Inbox, Bell, MapPin, BrainCircuit
@@ -11,10 +12,19 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     const pathname = usePathname();
     const router = useRouter();
 
+    // MENGAMBIL DATA SESSION DINAMIS
+    const { data: session } = useSession();
+    const user = session?.user as any;
+    const userName = user?.name || 'Store Supervisor';
+    const firstName = userName.split(' ')[0]; // Mengambil nama depan untuk sapaan
+    const userCity = user?.assignedCity || 'Kota Anda';
+    const avatarSeed = user?.email || 'store-spv';
+
+    // Asumsi kita menggunakan nama user sebagai nama toko jika retailerName spesifik belum di-set di session
+    const storeLocation = user?.name ? `Cabang ${user.name}, ${userCity}` : `Ramayana Plaza, ${userCity}`;
+
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
-
-    // State Logout
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
     // State Notifications
@@ -29,21 +39,47 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
 
     const [currentDate, setCurrentDate] = useState('Memuat...');
-    const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
 
-    // Data Dummy Notifikasi
-    const notifications = [
-        { id: 1, title: 'Restock Disetujui', desc: 'Manajer Kota menyetujui pengajuan 200 Pcs Sepatu Lari.', time: '10 menit yang lalu', isRead: false, icon: <CheckCircle2 size={16} className="text-emerald-500" />, bg: 'bg-emerald-50' },
-        { id: 2, title: 'Alert AI Forecast', desc: 'Lonjakan pengunjung diprediksi terjadi besok malam.', time: '2 jam yang lalu', isRead: false, icon: <AlertTriangle size={16} className="text-amber-500" />, bg: 'bg-amber-50' },
-        { id: 3, title: 'Update Sistem', desc: 'Sinkronisasi data API Kasir (POS) berhasil dilakukan.', time: 'Kemarin', isRead: true, icon: <BrainCircuit size={16} className="text-[#6A7BFA]" />, bg: 'bg-[#EDF2FE]' },
-    ];
+    // MENGAMBIL NOTIFIKASI DINAMIS DARI DATABASE
+    const [notifications, setNotifications] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!user?.email) return;
+        const fetchNotifs = async () => {
+            try {
+                // Endpoint ini bisa digunakan bersama dengan API notifikasi yang sudah dibuat sebelumnya
+                const res = await fetch(`/api/city/notifications?email=${encodeURIComponent(user.email)}`);
+                if (res.ok) setNotifications(await res.json());
+            } catch (error) {
+                console.error("Gagal memuat notifikasi toko", error);
+            }
+        };
+        fetchNotifs();
+    }, [user?.email]);
+
+    // Format Icon dan Warna Otomatis berdasarkan Title Notifikasi
+    const getNotifStyle = (title: string) => {
+        const t = title.toLowerCase();
+        if (t.includes('alert') || t.includes('kritis') || t.includes('tolak')) {
+            return { icon: <AlertTriangle size={16} className="text-amber-500" />, bg: 'bg-amber-50' };
+        }
+        if (t.includes('target') || t.includes('sukses') || t.includes('setuju') || t.includes('terima')) {
+            return { icon: <CheckCircle2 size={16} className="text-emerald-500" />, bg: 'bg-emerald-50' };
+        }
+        return { icon: <BrainCircuit size={16} className="text-[#6A7BFA]" />, bg: 'bg-[#EDF2FE]' };
+    };
+
+    const formatNotifTime = (dateStr: string) => {
+        return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    };
+
+    const unreadCount = notifications.filter(n => !n.isRead).length;
 
     useEffect(() => {
         const now = new Date();
         const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
         setCurrentDate(now.toLocaleDateString('id-ID', options).toUpperCase());
-        setCurrentLocation('Ramayana Plaza, Medan');
 
         const hour = now.getHours();
         if (hour >= 5 && hour < 12) setGreeting('Selamat Pagi');
@@ -76,13 +112,26 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
         if (!chatInput.trim()) return;
 
         setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
+        const input = chatInput.toLowerCase();
         setChatInput('');
         setIsAiTyping(true);
 
         setTimeout(() => {
-            setChatMessages(prev => [...prev, {
-                role: 'ai', text: "Kategori 'Men's Street Footwear' menyumbang 45% total profit toko minggu ini. Saran: Maksimalkan tata letak visual (display) produk ini di area depan untuk mendongkrak konversi pengunjung."
-            }]);
+            // Logika sederhana: AI menolak menjawab data di luar tokonya
+            const isAskingOutside = !input.includes('toko ini') && !input.includes('cabang') &&
+                (input.includes('kota lain') || input.includes('nasional') || input.includes('provinsi'));
+
+            if (isAskingOutside) {
+                setChatMessages(prev => [...prev, {
+                    role: 'ai', text: `Mohon maaf, otoritas saya terbatas hanya untuk menganalisis data di ${storeLocation} sesuai kredensial Anda.`
+                }]);
+            } else if (input.includes('error')) {
+                showToast(`Gemma AI sedang menyinkronkan data kasir.`, "warning");
+            } else {
+                setChatMessages(prev => [...prev, {
+                    role: 'ai', text: `Kategori 'Men's Street Footwear' menyumbang 45% total profit toko kita minggu ini. Saran: Maksimalkan tata letak visual (display) produk ini di area depan untuk mendongkrak konversi pengunjung.`
+                }]);
+            }
             setIsAiTyping(false);
         }, 1500);
     };
@@ -133,7 +182,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
-            {/* SIDEBAR DENGAN ROUNDED PREMIUM (STRUKTUR SAMA DENGAN ADMIN/CITY) */}
+            {/* SIDEBAR DENGAN ROUNDED PREMIUM */}
             <aside className={`fixed lg:relative top-0 left-0 h-[100dvh] w-[280px] bg-[#ffffff] flex flex-col py-6 px-5 z-[100] rounded-r-[32px] lg:rounded-none lg:rounded-br-[40px] lg:border-r lg:border-slate-100 shadow-[20px_0_40px_rgba(0,0,0,0.1)] lg:shadow-none transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex items-center justify-between mb-8 px-3 shrink-0">
                     <div className="flex items-center gap-3">
@@ -156,7 +205,8 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                         return (
                             <Link key={item.href} href={item.href} onClick={() => setIsMobileMenuOpen(false)}
                                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-[40px] text-sm font-semibold transition-all duration-200 ${isActive ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white shadow-md shadow-[#4f46e5]/30' : 'text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5]'}`}>
-                                {item.icon} {item.label}
+                                <div className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-[#4f46e5] transition-colors'}>{item.icon}</div>
+                                {item.label}
                             </Link>
                         );
                     })}
@@ -172,9 +222,9 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     <Link href="/dashboard/store/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                            <img src="https://api.dicebear.com/7.x/notionists/svg?seed=store2" alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
+                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
                             <div className="overflow-hidden">
-                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>Eka Saputra</p>
+                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>{userName}</p>
                                 <p className="text-[11px] text-slate-500 font-medium truncate">Store SPV</p>
                             </div>
                         </div>
@@ -186,7 +236,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
             {/* MAIN CONTENT AREA */}
             <div className="flex-1 h-full overflow-y-auto relative custom-scrollbar bg-[#F4F7FE]" onScroll={handleScroll}>
 
-                {/* HEADER DYNAMIC KONSISTEN (STRUKTUR SAMA DENGAN ADMIN/CITY) */}
+                {/* HEADER DYNAMIC KONSISTEN */}
                 <header className={`sticky top-0 z-[70] w-full transition-all duration-300 rounded-b-[32px] lg:rounded-b-none lg:rounded-br-[40px] ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)]' : 'bg-white/80 backdrop-blur-md border-b border-slate-200/50'}`}>
 
                     {/* KHUSUS MOBILE HEADER */}
@@ -204,10 +254,10 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                         <div className="flex items-center gap-3">
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative w-9 h-9 bg-white rounded-full flex items-center justify-center text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5] transition-colors active:scale-95 border border-slate-200 shadow-sm">
                                 <Bell size={16} />
-                                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                                {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>}
                             </button>
                             <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer hidden sm:block">
-                                <img src="https://api.dicebear.com/7.x/notionists/svg?seed=store2" alt="Profile" className="w-full h-full object-cover" />
+                                <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-full h-full object-cover" />
                             </div>
                         </div>
                     </div>
@@ -216,20 +266,20 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, Eka! 👋`}
+                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
                             </h2>
-                            <p className="text-xs font-medium text-slate-500 mt-1">Akses otorisasi tingkat Cabang (Ramayana Plaza)</p>
+                            <p className="text-xs font-medium text-slate-500 mt-1">Akses otorisasi tingkat Cabang</p>
                         </div>
 
                         <div className="flex items-center gap-6 relative" ref={notifRef}>
                             <div className="text-right border-r border-slate-200 pr-6">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{currentDate}</p>
-                                <p className="text-xs font-semibold text-slate-600 flex items-center justify-end gap-1"><MapPin size={12} className="text-[#4f46e5]" /> {currentLocation}</p>
+                                <p className="text-xs font-semibold text-slate-600 flex items-center justify-end gap-1"><MapPin size={12} className="text-[#4f46e5]" /> {storeLocation}</p>
                             </div>
 
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:text-[#4f46e5] hover:bg-slate-50 transition-colors relative">
                                 <Bell size={18} />
-                                <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                                {unreadCount > 0 && <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>}
                             </button>
 
                             {/* POPOVER NOTIFIKASI */}
@@ -237,23 +287,28 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                                 <div className="absolute right-0 top-[calc(100%+8px)] w-[300px] sm:w-[340px] bg-white rounded-[24px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 z-[100]">
                                     <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
                                         <span className="font-bold text-slate-800 text-sm">Notifikasi Terkini</span>
-                                        <span className="text-[10px] font-bold text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-full">2 Baru</span>
+                                        {unreadCount > 0 && <span className="text-[10px] font-bold text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-full">{unreadCount} Baru</span>}
                                     </div>
                                     <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
-                                        {notifications.map(n => (
-                                            <div key={n.id} className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer flex gap-3 ${!n.isRead ? 'bg-slate-50/50' : ''}`}>
-                                                <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${n.bg}`}>
-                                                    {n.icon}
-                                                </div>
-                                                <div>
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <h4 className={`text-sm ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>{n.title}</h4>
+                                        {notifications.length === 0 ? (
+                                            <div className="p-6 text-center text-slate-400 text-sm font-medium">Belum ada notifikasi.</div>
+                                        ) : notifications.map(n => {
+                                            const style = getNotifStyle(n.title);
+                                            return (
+                                                <div key={n.id} className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer flex gap-3 ${!n.isRead ? 'bg-slate-50/50' : ''}`}>
+                                                    <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${style.bg}`}>
+                                                        {style.icon}
                                                     </div>
-                                                    <p className="text-xs text-slate-500 leading-relaxed mb-1.5 line-clamp-2">{n.desc}</p>
-                                                    <span className="text-[10px] font-semibold text-slate-400">{n.time}</span>
+                                                    <div>
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <h4 className={`text-sm ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>{n.title}</h4>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 leading-relaxed mb-1.5 line-clamp-2">{n.description}</p>
+                                                        <span className="text-[10px] font-semibold text-slate-400">{formatNotifTime(n.createdAt)}</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                     <button onClick={() => setIsNotifOpen(false)} className="w-full p-3 text-xs font-bold text-[#4f46e5] hover:bg-[#EDF2FE] transition-colors border-t border-slate-50 text-center">
                                         Tutup
@@ -277,7 +332,7 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-90"><X size={20} /></button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50/50 space-y-4 text-sm custom-scrollbar relative z-0">
-                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">Halo Pak Eka! Data penjualan harian sudah sinkron. Ada kategori produk yang ingin dianalisis?</div>
+                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">Halo Pak {firstName}! Data penjualan harian sudah sinkron. Ada kategori produk yang ingin dianalisis?</div>
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                                         <div className={`p-4 max-w-[85%] shadow-sm font-medium leading-relaxed ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>{msg.text}</div>

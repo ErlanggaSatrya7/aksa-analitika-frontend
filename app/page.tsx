@@ -68,7 +68,7 @@ export default function LoginPage() {
           router.push('/dashboard/city'); // Dashboard Kota
         }
         else if (userRole === 'RETAILER_ADMIN') {
-          router.push('/dashboard/retailer'); // Dashboard Toko/Retailer
+          router.push('/dashboard/store'); // Dashboard Toko/Retailer
         }
         else {
           router.push('/dashboard/admin'); // Fallback aman
