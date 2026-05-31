@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react'; // IMPORT getSession DITAMBAHKAN
 import { Loader2, XCircle, Eye, EyeOff, ShieldCheck, CheckSquare, Mail, Lock, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
@@ -53,7 +53,27 @@ export default function LoginPage() {
         setToast({ type: 'error', message: 'Email atau kata sandi salah, atau akun belum aktif.' });
         setIsLoading(false);
       } else {
-        router.push('/dashboard/admin');
+        // 🔥 PERBAIKAN: Ambil sesi terbaru secara manual detik ini juga
+        const session = await getSession();
+        const userRole = (session?.user as any)?.role;
+
+        // PENGARAHAN ROUTER BERDASARKAN ROLE
+        if (userRole === 'SUPER_ADMIN' || userRole === 'DATA_ENGINEER') {
+          router.push('/dashboard/admin');
+        }
+        else if (userRole === 'STATE_ADMIN') {
+          router.push('/dashboard/regional'); // Dashboard Provinsi
+        }
+        else if (userRole === 'CITY_ADMIN') {
+          router.push('/dashboard/city'); // Dashboard Kota
+        }
+        else if (userRole === 'RETAILER_ADMIN') {
+          router.push('/dashboard/retailer'); // Dashboard Toko/Retailer
+        }
+        else {
+          router.push('/dashboard/admin'); // Fallback aman
+        }
+
         router.refresh();
       }
     } catch (error) {
@@ -106,7 +126,6 @@ export default function LoginPage() {
             </div>
 
             <div className="mt-4 lg:mt-5 shrink-0">
-              {/* Line-height dilonggarkan ke 1.25 sesuai audit untuk breathing room */}
               <h2 className="font-heading text-[32px] lg:text-[38px] leading-[1.25] font-bold text-white mb-3 drop-shadow-sm">Smarter Insights, <br />Better Decisions</h2>
               <p className="text-white/90 text-[14px] leading-relaxed max-w-sm">Monitor business performance, analyze trends, and make smarter decisions with data-driven insights.</p>
             </div>
@@ -135,7 +154,6 @@ export default function LoginPage() {
 
             <form onSubmit={handleLogin} className="flex flex-col gap-4 lg:gap-5">
 
-              {/* INPUT EMAIL: Premium State (border 1.5px, focus ring tebal & glow) */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[13px] font-semibold text-slate-700 ml-1">Company Email</label>
                 <div className="relative group">
@@ -151,7 +169,6 @@ export default function LoginPage() {
                 {emailError && <span className="text-[12px] text-red-500 font-medium ml-1">{emailError}</span>}
               </div>
 
-              {/* INPUT PASSWORD: Premium State */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[13px] font-semibold text-slate-700 ml-1">Password</label>
                 <div className="relative group">
@@ -183,7 +200,6 @@ export default function LoginPage() {
                 <span className="text-[13px] font-bold text-[#6C63FF] hover:text-[#5046e5] cursor-pointer transition-all">Forgot Password?</span>
               </div>
 
-              {/* BUTTON: Gradient Indigo -> Violet & Hover Interaction */}
               <button type="submit" disabled={isLoading} className="w-full mt-2 bg-gradient-to-r from-[#5046e5] to-[#6C63FF] text-white font-bold text-[14px] py-4 rounded-[16px] flex items-center justify-center gap-2.5 shadow-[0_8px_20px_rgba(108,99,255,0.25)] hover:shadow-[0_12px_25px_rgba(108,99,255,0.35)] hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed group">
                 {isLoading ? (
                   <><Loader2 size={18} className="animate-spin" /> Signing you in...</>
@@ -193,7 +209,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* SECURITY BADGE: Diperkecil 20%, lebih compact & subtle */}
             <div className="mt-7 flex flex-col gap-4 border-t border-slate-100 pt-5">
               <div className="bg-[#F4FDF8] border border-[#D1F4E0] rounded-[12px] p-3 flex gap-2.5 items-center w-full shadow-sm hover:shadow-md transition-shadow duration-300">
                 <div className="text-[#10B981] shrink-0 bg-[#E6F9F0] p-1.5 rounded-full">
@@ -211,9 +226,6 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
-
-
-
     </main>
   );
 }

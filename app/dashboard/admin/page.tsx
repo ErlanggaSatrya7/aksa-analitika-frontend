@@ -7,6 +7,9 @@ import Link from 'next/link';
 
 export default function RingkasanNasional() {
     const [isLoading, setIsLoading] = useState(true);
+    // 🔥 STATE PENJAGA: Mencegah Echarts Crash
+    const [isMapLoaded, setIsMapLoaded] = useState(false);
+
     const [activeTrendTab, setActiveTrendTab] = useState<'trend' | 'channel'>('trend');
     const [activePortoTab, setActivePortoTab] = useState<'produk' | 'retailer'>('produk');
 
@@ -14,42 +17,61 @@ export default function RingkasanNasional() {
 
     useEffect(() => {
         Promise.all([
-            fetch('/indonesia.json').then((res) => res.json()),
+            // 🔥 PERBAIKAN: Ubah ekstensi menjadi .geojson
+            fetch('/indonesia.geojson').then(async (res) => {
+                const text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error("File bukan JSON/GeoJSON yang valid. Isinya:", text.substring(0, 50));
+                    return null;
+                }
+            }),
             fetch('/api/admin/analytics/dashboard').then((res) => res.json())
         ])
             .then(([mapData, dbData]) => {
-                // TRANSLATOR GEOJSON -> DATABASE (UPPERCASE)
-                const geojsonNameTranslator: Record<string, string> = {
-                    "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
-                    "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
-                    "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
-                    "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
-                    "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
-                    "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
-                    "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
-                    "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA", "BANGKA BELITUNG": "BANGKA BELITUNG",
-                    "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
-                    "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
-                    "KALIMANTAN UTARA": "KALIMANTAN UTARA", "KEPULAUAN RIAU": "KEPULAUAN RIAU", "BALI": "BALI"
-                };
+                // Pastikan mapData valid dan memiliki features
+                if (mapData && mapData.features) {
+                    const geojsonNameTranslator: Record<string, string> = {
+                        "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
+                        "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
+                        "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
+                        "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
+                        "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
+                        "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
+                        "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
+                        "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA",
+                        "BANGKA BELITUNG": "BANGKA BELITUNG", "KEPULAUAN BANGKA BELITUNG": "BANGKA BELITUNG", "KEP. BANGKA BELITUNG": "BANGKA BELITUNG",
+                        "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
+                        "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
+                        "KALIMANTAN UTARA": "KALIMANTAN UTARA", "BALI": "BALI",
+                        "KEPULAUAN RIAU": "KEPULAUAN RIAU", "KEP. RIAU": "KEPULAUAN RIAU", "KEPRI": "KEPULAUAN RIAU"
+                    };
 
-                mapData.features.forEach((feature: any) => {
-                    const oldName = feature.properties.Propinsi ? feature.properties.Propinsi.toUpperCase() : "";
-                    if (geojsonNameTranslator[oldName]) {
-                        feature.properties.Propinsi = geojsonNameTranslator[oldName];
-                    } else if (oldName) {
-                        feature.properties.Propinsi = oldName;
-                    }
-                });
+                    mapData.features.forEach((feature: any) => {
+                        let rawName = feature.properties.Propinsi || feature.properties.state || feature.properties.NAME_1 || "";
+                        let pName = rawName.toUpperCase();
+                        if (geojsonNameTranslator[pName]) {
+                            pName = geojsonNameTranslator[pName];
+                        }
+                        feature.properties.Propinsi = pName;
+                    });
 
-                echarts.registerMap('indonesia_nasional', mapData);
+                    echarts.registerMap('indonesia_nasional', mapData);
+                    setIsMapLoaded(true);
+                } else {
+                    console.warn("Peta tidak dirender karena data GeoJSON kosong atau salah format.");
+                }
+
                 setDashboardData(dbData);
                 setIsLoading(false);
             })
-            .catch(() => setIsLoading(false));
-    }, []);
+            .catch((err) => {
+                console.error("Gagal menarik data:", err);
+                setIsLoading(false);
+            });
+    }, []); 
 
-    // Memaksa data dari API menjadi UPPERCASE agar 100% cocok dengan peta Echarts
     const mapDataFormatted = dashboardData?.mapDistribution?.map((d: any) => ({
         name: d.name.toUpperCase(),
         value: d.value
@@ -59,9 +81,9 @@ export default function RingkasanNasional() {
         backgroundColor: 'transparent',
         tooltip: { trigger: 'item', backgroundColor: '#ffffff', textStyle: { color: '#0F172A', fontSize: 13 }, borderWidth: 1, borderColor: '#E2E8F0', padding: [10, 14], formatter: (params: any) => `<div style="font-weight:600; font-size:11px; text-transform:uppercase; color:#64748B; margin-bottom:4px;">${params.name || 'Wilayah'}</div><div style="color:#6A7BFA; font-weight:bold; font-size:15px;">${params.value ? (params.value).toLocaleString('id-ID') : 0} Unit</div>` },
         visualMap: { min: 0, max: 50000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#A3B1FF', '#4f46e5'] }, show: false },
-        series: [{
-            name: 'Volume Provinsi', type: 'map', map: 'indonesia_nasional', nameProperty: 'Propinsi', roam: false, label: { show: false }, itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#A3B1FF' }, label: { show: false } },
-            data: mapDataFormatted // Menggunakan data yang sudah diformat UPPERCASE
+        series: [{  
+            name: 'Volume Provinsi', type: 'map', map: 'indonesia_nasional', nameProperty: 'Propinsi', roam: true, label: { show: false }, itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#A3B1FF' }, label: { show: false } },
+            data: mapDataFormatted
         }]
     };
 
@@ -78,7 +100,7 @@ export default function RingkasanNasional() {
         grid: { left: '2%', right: '15%', bottom: '5%', top: '10%', containLabel: true },
         xAxis: { type: 'value', show: false },
         yAxis: { type: 'category', data: dashboardData?.salesMethod?.map((d: any) => d.name) || [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontWeight: '700', color: '#475569' } },
-        series: [{ name: 'Unit Terjual', type: 'bar', barWidth: '45%', data: dashboardData?.salesMethod?.map((d: any, i: number) => ({ value: d.value, itemStyle: { color: i === 0 ? '#4f46e5' : i === 1 ? '#6A7BFA' : '#A3B1FF', borderRadius: [0, 6, 6, 0] } })) || [], label: { show: true, position: 'right', formatter: '{c} Unit', fontWeight: 'bold' } }]
+        series: [{ name: 'Unit Terjual', type: 'bar', barWidth: '45%', data: dashboardData?.salesMethod?.map((d: any, i: number) => ({ value: d.value, itemStyle: { color: i === 0 ? '#4f46e5' : i === 1 ? '#6A7BFA' : '#A3B1FF', borderRadius: [0, 6, 6, 0] } })) || [], label: { show: true, position: 'right', formatter: '{c}', fontWeight: 'bold' } }]
     };
 
     const productChartOption = {
@@ -147,7 +169,18 @@ export default function RingkasanNasional() {
                         <div className="p-2.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl"><MapIcon size={20} /></div>
                         <div><h3 className="text-xl font-bold text-slate-900">Sebaran Penjualan Unit</h3><p className="text-slate-500 text-xs mt-0.5">Performa wilayah aktual berdasar letak geografis</p></div>
                     </div>
-                    <div className="w-full h-[400px] relative z-10 rounded-[24px] bg-[#F8FAFC] border border-slate-100 overflow-hidden"><ReactECharts option={miniMapOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} /></div>
+
+                    {/* 🔥 PERBAIKAN: ECHARTS HANYA RENDER JIKA PETA SUDAH SIAP */}
+                    <div className="w-full h-[400px] relative z-10 rounded-[24px] bg-[#F8FAFC] border border-slate-100 overflow-hidden">
+                        {isMapLoaded ? (
+                            <ReactECharts option={miniMapOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 font-semibold text-sm gap-3">
+                                <Loader2 size={32} className="animate-spin text-[#6A7BFA]" />
+                                <span>Mempersiapkan Peta...</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="lg:col-span-2 bg-white border border-slate-100 rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col group">
                     <h3 className="text-xl font-bold text-slate-900 mb-6">Top 7 Provinsi (Unit)</h3>
