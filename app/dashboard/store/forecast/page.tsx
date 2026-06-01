@@ -1,9 +1,14 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 import ReactECharts from 'echarts-for-react';
-import { BrainCircuit, Loader2, Info, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send } from 'lucide-react';
+import { BrainCircuit, Loader2, Info, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, AlertCircle } from 'lucide-react';
 
 export default function StoreForecastPage() {
+    const { data: session } = useSession();
+    const user = session?.user as any;
+    const retailerId = user?.retailerId || '';
+
     const [isLoading, setIsLoading] = useState(true);
     const [isPredicting, setIsPredicting] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
@@ -14,12 +19,16 @@ export default function StoreForecastPage() {
     const filterRef = useRef<HTMLDivElement>(null);
 
     const [insightTime, setInsightTime] = useState('');
-    const [currentInsightText, setCurrentInsightText] = useState('Analisis AI vs Sisa Stok API: Stok fisik untuk "Men\'s Street Footwear" di gudang toko tidak akan mencukupi lonjakan pengunjung akhir pekan ini.');
+
+    // State Dinamis
+    const [forecastData, setForecastData] = useState({
+        chartData: { actual: [] as number[], optimis: [] as number[], prediksi: [] as number[], pesimis: [] as number[] },
+        insightText: 'Klik "Komparasi AI & Kasir" untuk menganalisis data.',
+        availableProducts: ['Semua Kategori']
+    });
 
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-    const [broadcastHistory, setBroadcastHistory] = useState([
-        { id: 'REQ-089', date: 'Senin, 11 Mei 2026 08:30 WIB', target: 'Citra Lestari (Manager Kota)', insight: 'Permintaan restock darurat Kemeja Pria sebanyak 200 Pcs.' }
-    ]);
+    const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
 
     const updateTimestamp = () => {
         const now = new Date();
@@ -29,11 +38,6 @@ export default function StoreForecastPage() {
 
     useEffect(() => {
         setInsightTime(updateTimestamp());
-        const timer = setTimeout(() => setIsLoading(false), 800);
-        return () => clearTimeout(timer);
-    }, []);
-
-    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (filterRef.current && !filterRef.current.contains(event.target as Node)) setOpenDropdown(null);
         };
@@ -41,33 +45,95 @@ export default function StoreForecastPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Initial Fetch (Opsi Dropdown & History)
+    useEffect(() => {
+        if (!retailerId) {
+            setIsLoading(false);
+            return;
+        }
+        setIsLoading(true);
+
+        fetch(`/api/store/forecast?retailerId=${retailerId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.availableProducts) {
+                    setForecastData(prev => ({ ...prev, availableProducts: data.availableProducts }));
+                }
+                if (data.history) {
+                    setBroadcastHistory(data.history);
+                }
+            })
+            .finally(() => setIsLoading(false));
+    }, [retailerId]);
+
     const showToast = (title: string, desc: string, isAlert: boolean = false) => {
         setToastMsg({ title, desc, isAlert });
         setTimeout(() => setToastMsg(null), 4000);
     }
 
-    const handleGenerateForecast = () => {
+    const handleGenerateForecast = async () => {
+        if (!retailerId) return;
         setIsPredicting(true);
-        setTimeout(() => {
+
+        try {
+            const res = await fetch(`/api/store/forecast?retailerId=${retailerId}&category=${encodeURIComponent(filterProduct)}`);
+            const data = await res.json();
+
+            if (res.ok) {
+                setForecastData(prev => ({
+                    ...prev,
+                    chartData: data.chartData,
+                    insightText: data.insightText
+                }));
+                setInsightTime(updateTimestamp());
+                showToast("Sinkronisasi Selesai", "Prediksi AI & Data API Kasir berhasil dimuat.");
+            }
+        } catch (error) {
+            console.error("Forecast Error:", error);
+        } finally {
             setIsPredicting(false);
-            setInsightTime(updateTimestamp());
-            const targetProduk = filterProduct === 'Semua Kategori' ? 'seluruh produk unggulan' : `kategori ${filterProduct}`;
-            setCurrentInsightText(`Berdasarkan data mesin kasir (POS) saat ini, stok untuk ${targetProduk} akan habis (Out-of-Stock) di akhir pekan. Segera ajukan permohonan restock ke Manajer Kota.`);
-            showToast("Sinkronisasi Selesai", "Prediksi AI & Data API Kasir berhasil dimuat.");
-        }, 1500);
+        }
     };
 
-    const handleBroadcastAlert = () => {
+    const handleBroadcastAlert = async () => {
+        if (!retailerId) return;
         setIsBroadcasting(true);
-        setTimeout(() => {
+
+        try {
+            // Kita extract jumlah Pcs dari insightText menggunakan Regex (hanya untuk simulasi qty yang diajukan)
+            const qtyMatch = forecastData.insightText.match(/sebanyak (\d+)/);
+            const qty = qtyMatch ? parseInt(qtyMatch[1]) : 150;
+
+            const res = await fetch('/api/store/forecast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    retailerId: retailerId,
+                    productCategory: filterProduct,
+                    qtyRequested: qty
+                })
+            });
+
+            if (res.ok) {
+                const newData = await res.json();
+                const newLog = {
+                    id: `REQ-${newData.id.substring(0, 4).toUpperCase()}`,
+                    date: updateTimestamp(),
+                    target: 'Manajer Kota / Cabang',
+                    insight: `Pengajuan kuota tambahan ${filterProduct} sebanyak ${qty} Pcs.`
+                };
+
+                setBroadcastHistory(prev => [newLog, ...prev]);
+                showToast("Permohonan Terkirim!", `Permintaan stok telah dikirim ke Manajer Kota via Inbox.`, true);
+                setIsHistoryOpen(true);
+            }
+        } catch (error) {
+            showToast("Gagal Terkirim", "Terjadi kesalahan jaringan.", false);
+        } finally {
             setIsBroadcasting(false);
-            const target = 'Citra Lestari (Manager Kota)';
-            const newLog = { id: `REQ-${Math.floor(Math.random() * 900) + 100}`, date: updateTimestamp(), target: target, insight: currentInsightText };
-            setBroadcastHistory(prev => [newLog, ...prev]);
-            showToast("Permohonan Terkirim!", `Permintaan stok telah dikirim ke ${target} via Inbox.`, true);
-            setIsHistoryOpen(true);
-        }, 1200);
+        }
     };
+
     const forecastOption = {
         tooltip: {
             trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: '#CBD5E1', type: 'dashed' } },
@@ -88,18 +154,17 @@ export default function StoreForecastPage() {
         xAxis: { type: 'category', boundaryGap: false, data: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Ming'], axisLine: { lineStyle: { color: '#E2E8F0' } }, axisLabel: { color: '#64748B', fontWeight: '500', margin: 12 } },
         yAxis: { type: 'value', axisLabel: { formatter: '{value}', color: '#64748B', fontWeight: '600' }, splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } } },
         series: [
-            { name: 'Sisa Stok Kasir', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#6A7BFA', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 4, color: '#6A7BFA' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(106, 123, 250, 0.2)' }, { offset: 1, color: 'rgba(106, 123, 250, 0)' }] } }, data: [150, 130, 110, 85, 60, null, null] },
-            { name: 'Skenario Optimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#10B981' }, data: [null, null, null, null, 60, 120, 150] },
+            { name: 'Sisa Stok Kasir', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#6A7BFA', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 4, color: '#6A7BFA' }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(106, 123, 250, 0.2)' }, { offset: 1, color: 'rgba(106, 123, 250, 0)' }] } }, data: forecastData.chartData.actual },
+            { name: 'Skenario Optimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#10B981', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#10B981' }, data: forecastData.chartData.optimis },
             {
-                name: 'Prediksi Kebutuhan', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 3, type: 'dashed', color: '#F59E0B' }, data: [null, null, null, null, 60, 95, 110],
-                // PERBAIKAN: Posisi Teks dinaikkan ke atas agar tidak tabrakan
+                name: 'Prediksi Kebutuhan', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#F59E0B', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 3, type: 'dashed', color: '#F59E0B' }, data: forecastData.chartData.prediksi,
                 markLine: { symbol: 'none', label: { formatter: 'Akhir Pekan', position: 'end', color: '#64748B', fontSize: 10, fontWeight: '600', padding: [0, 0, 5, 0] }, lineStyle: { color: '#CBD5E1', type: 'dashed', width: 1.5 }, data: [{ xAxis: 'Jum' }] }
             },
-            { name: 'Skenario Pesimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#EF4444' }, data: [null, null, null, null, 60, 70, 80] }
+            { name: 'Skenario Pesimis', type: 'line', smooth: true, symbolSize: 6, itemStyle: { color: '#EF4444', borderWidth: 2, borderColor: '#fff' }, lineStyle: { width: 2, type: 'dashed', color: '#EF4444' }, data: forecastData.chartData.pesimis }
         ]
     };
 
-    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3"><Loader2 size={24} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Menyiapkan Koneksi API...</span></div>;
+    if (isLoading) return <div className="w-full h-full flex flex-col items-center justify-center text-[#6A7BFA] gap-3 min-h-[60vh]"><Loader2 size={32} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Menyiapkan Koneksi API...</span></div>;
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-6 relative">
@@ -113,6 +178,7 @@ export default function StoreForecastPage() {
                         <h4 className="font-bold text-slate-900 text-sm">{toastMsg.title}</h4>
                         <p className="text-xs text-slate-500 mt-0.5">{toastMsg.desc}</p>
                     </div>
+                    <button onClick={() => setToastMsg(null)} className="ml-2 text-slate-400 hover:text-slate-600"><AlertCircle size={16} /></button>
                 </div>
             )}
 
@@ -133,8 +199,8 @@ export default function StoreForecastPage() {
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#6A7BFA] transition-transform ${openDropdown === 'product' ? 'rotate-180' : ''}`} />
                             </button>
                             {openDropdown === 'product' && (
-                                <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
-                                    {['Semua Kategori', "Men's Athletic", "Women's Street", "Kids Apparel"].map((item) => (
+                                <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-60 overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
+                                    {forecastData.availableProducts.map((item) => (
                                         <button key={item} onClick={() => { setFilterProduct(item); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterProduct === item ? 'bg-[#EDF2FE] text-[#6A7BFA]' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#6A7BFA]'}`}>
                                             {item} {filterProduct === item && <CheckCircle2 size={16} className="text-[#6A7BFA]" />}
                                         </button>
@@ -174,10 +240,17 @@ export default function StoreForecastPage() {
                 </div>
 
                 <div className="w-full h-[350px]">
-                    <ReactECharts option={forecastOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
+                    {forecastData.chartData.actual.length > 0 ? (
+                        <ReactECharts option={forecastOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-3 border-2 border-dashed border-slate-200 rounded-[24px]">
+                            <Sparkles size={32} className="opacity-50" />
+                            <span className="font-bold">Silakan tekan "Komparasi AI & Kasir" untuk memulai.</span>
+                        </div>
+                    )}
                 </div>
 
-                {!isPredicting && (
+                {forecastData.chartData.actual.length > 0 && !isPredicting && (
                     <div className="mt-8 p-6 lg:p-8 border bg-[#F8FAFC] border-slate-200 rounded-[32px] shadow-inner relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-100/40 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
 
@@ -197,7 +270,7 @@ export default function StoreForecastPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10 mb-6">
                             <div className="bg-white p-5 rounded-[24px] border border-slate-100 shadow-sm flex flex-col gap-3">
                                 <div className="flex items-center gap-2 text-slate-800"><Info size={18} /><span className="font-bold text-xs uppercase tracking-widest">Kondisi Toko (API)</span></div>
-                                <p className="text-slate-700 text-sm font-medium leading-relaxed">{currentInsightText}</p>
+                                <p className="text-slate-700 text-sm font-medium leading-relaxed">{forecastData.insightText}</p>
                             </div>
                             <div className="bg-red-50 p-5 rounded-[24px] border border-red-100 shadow-sm flex flex-col gap-3">
                                 <div className="flex items-center gap-2 text-red-600"><TrendingDown size={18} /><span className="font-bold text-xs uppercase tracking-widest">Risiko Kehabisan Barang</span></div>
@@ -229,7 +302,9 @@ export default function StoreForecastPage() {
                 {isHistoryOpen && (
                     <div className="mt-8 border-t border-slate-100 pt-6 animate-in slide-in-from-top-4 fade-in duration-300">
                         <div className="max-h-[380px] overflow-y-auto custom-scrollbar pr-2 space-y-4">
-                            {broadcastHistory.map((item, idx) => (
+                            {broadcastHistory.length === 0 ? (
+                                <p className="text-sm text-slate-400 text-center py-4">Belum ada riwayat pengajuan.</p>
+                            ) : broadcastHistory.map((item, idx) => (
                                 <div key={idx} className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between p-5 bg-white border border-slate-200 rounded-[24px]">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-3 mb-2">

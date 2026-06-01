@@ -20,8 +20,22 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
     const userCity = user?.assignedCity || 'Kota Anda';
     const avatarSeed = user?.email || 'store-spv';
 
-    // Asumsi kita menggunakan nama user sebagai nama toko jika retailerName spesifik belum di-set di session
-    const storeLocation = user?.name ? `Cabang ${user.name}, ${userCity}` : `Ramayana Plaza, ${userCity}`;
+    // --- TAMBAHAN BARU: STATE & FETCH NAMA TOKO DARI DATABASE ---
+    const [realStoreName, setRealStoreName] = useState('Memuat toko...');
+    const storeLocation = `${realStoreName}, ${userCity}`;
+
+    useEffect(() => {
+        if (user?.email) {
+            fetch(`/api/user/profile?email=${user.email}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data?.retailer?.name) setRealStoreName(data.retailer.name);
+                    else setRealStoreName('Toko Belum Disetel');
+                })
+                .catch(err => console.error("Gagal get toko:", err));
+        }
+    }, [user?.email]);
+    // -------------------------------------------------------------
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
@@ -218,14 +232,18 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                     </button>
                 </div>
 
+                {/* PROFILE WIDGET BOTTOM LINK DINAMIS */}
                 <div className="relative px-2 pt-4 border-t border-slate-100 shrink-0">
                     <Link href="/dashboard/store/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
                             <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
                             <div className="overflow-hidden">
-                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>{userName}</p>
-                                <p className="text-[11px] text-slate-500 font-medium truncate">Store SPV</p>
+                                {/* PERBAIKAN SINI: Tampilkan Nama Toko sebagai primary, nama SPV sebagai subtitle */}
+                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>
+                                    {realStoreName}
+                                </p>
+                                <p className="text-[11px] text-slate-500 font-medium truncate">SPV: {userName}</p>
                             </div>
                         </div>
                         <Settings size={16} className={`transition-all duration-300 ${pathname.includes('/profile') ? 'text-[#4f46e5] rotate-45' : 'text-slate-400 group-hover:text-[#4f46e5] group-hover:rotate-45'}`} />
@@ -256,25 +274,31 @@ export default function StoreLayout({ children }: { children: React.ReactNode })
                                 <Bell size={16} />
                                 {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>}
                             </button>
-                            <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer hidden sm:block">
+                            <Link href="/dashboard/store/profile" className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer hidden sm:block">
                                 <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-full h-full object-cover" />
-                            </div>
+                            </Link>
                         </div>
                     </div>
 
                     {/* KHUSUS DESKTOP HEADER */}
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
+                            {/* PERBAIKAN SINI: Tampilkan Nama Toko di Title Header */}
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
+                                {pathname.includes('/profile') ? 'Account Settings' : realStoreName}
                             </h2>
-                            <p className="text-xs font-medium text-slate-500 mt-1">Akses otorisasi tingkat Cabang</p>
+                            {/* PERBAIKAN SINI: Pindahkan sapaan ke bawah */}
+                            <p className="text-xs font-medium text-slate-500 mt-1">
+                                {pathname.includes('/profile') ? 'Kelola akun Anda' : `Dashboard Toko • Supervisor: ${firstName} 👋`}
+                            </p>
                         </div>
 
                         <div className="flex items-center gap-6 relative" ref={notifRef}>
                             <div className="text-right border-r border-slate-200 pr-6">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{currentDate}</p>
-                                <p className="text-xs font-semibold text-slate-600 flex items-center justify-end gap-1"><MapPin size={12} className="text-[#4f46e5]" /> {storeLocation}</p>
+                                <p className="text-xs font-semibold text-slate-600 flex items-center justify-end gap-1">
+                                    <MapPin size={12} className="text-[#4f46e5]" /> {userCity}, Indonesia
+                                </p>
                             </div>
 
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:text-[#4f46e5] hover:bg-slate-50 transition-colors relative">

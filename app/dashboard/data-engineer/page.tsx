@@ -3,21 +3,38 @@ import React from 'react';
 import Link from 'next/link';
 import { Database, FileSpreadsheet, HardDrive, BrainCircuit, ArrowRight, TrendingUp, CloudUpload, Eye } from 'lucide-react';
 
-export default function DataEngineerDashboard() {
+import { useState, useEffect } from 'react'; // Pastikan useState dan useEffect di-import di paling atas file jika belum ada
 
-    // DATA DUMMY 10 BARIS DI DASHBOARD (SAMPEL HISTORIS)
-    const dummyRecentData = [
-        { no: 1, retailer: 'Ramayana', id: '1185732', date: '2020-01-01 00:00:00', region: 'Sumatera', state: 'Sumatera Utara', city: 'Medan', product: "Men's Street Footwear", price: 842750, units: 1200, totalSales: 1011300000, profit: 505650000, margin: 0.5, method: 'Offline (Toko Fisik)' },
-        { no: 2, retailer: 'Ramayana', id: '1185732', date: '2020-01-02 00:00:00', region: 'Sumatera', state: 'Sumatera Utara', city: 'Medan', product: "Men's Athletic Footwear", price: 842750, units: 1000, totalSales: 842750000, profit: 252825000, margin: 0.3, method: 'Offline (Toko Fisik)' },
-        { no: 3, retailer: 'Ramayana', id: '1185732', date: '2020-01-03 00:00:00', region: 'Sumatera', state: 'Sumatera Utara', city: 'Medan', product: "Women's Street Footwear", price: 674200, units: 1000, totalSales: 674200000, profit: 235970000, margin: 0.35, method: 'Offline (Toko Fisik)' },
-        { no: 4, retailer: 'Matahari', id: '1185733', date: '2020-01-04 00:00:00', region: 'Sumatera', state: 'Riau', city: 'Pekanbaru', product: "Kids Footwear", price: 450000, units: 850, totalSales: 382500000, profit: 153000000, margin: 0.4, method: 'Offline (Toko Fisik)' },
-        { no: 5, retailer: 'Sport Station', id: '1185734', date: '2020-01-05 00:00:00', region: 'Sumatera', state: 'Sumatera Barat', city: 'Padang', product: "Men's Athletic Footwear", price: 950000, units: 600, totalSales: 570000000, profit: 228000000, margin: 0.4, method: 'Online (Website)' },
-        { no: 6, retailer: 'Ramayana', id: '1185732', date: '2020-01-06 00:00:00', region: 'Sumatera', state: 'Sumatera Selatan', city: 'Palembang', product: "Women's Athletic", price: 720000, units: 1100, totalSales: 792000000, profit: 316800000, margin: 0.4, method: 'Offline (Toko Fisik)' },
-        { no: 7, retailer: 'Matahari', id: '1185733', date: '2020-01-07 00:00:00', region: 'Sumatera', state: 'Lampung', city: 'Bandar Lampung', product: "Men's Street Footwear", price: 842750, units: 950, totalSales: 800612500, profit: 280214375, margin: 0.35, method: 'Offline (Toko Fisik)' },
-        { no: 8, retailer: 'Sport Station', id: '1185734', date: '2020-01-08 00:00:00', region: 'Sumatera', state: 'Aceh', city: 'Banda Aceh', product: "Kids Footwear", price: 450000, units: 500, totalSales: 225000000, profit: 67500000, margin: 0.3, method: 'Online (App)' },
-        { no: 9, retailer: 'Ramayana', id: '1185732', date: '2020-01-09 00:00:00', region: 'Sumatera', state: 'Jambi', city: 'Jambi', product: "Women's Street Footwear", price: 674200, units: 800, totalSales: 539360000, profit: 215744000, margin: 0.4, method: 'Offline (Toko Fisik)' },
-        { no: 10, retailer: 'Matahari', id: '1185733', date: '2020-01-10 00:00:00', region: 'Sumatera', state: 'Sumatera Utara', city: 'Medan', product: "Men's Athletic Footwear", price: 842750, units: 1500, totalSales: 1264125000, profit: 505650000, margin: 0.4, method: 'Offline (Toko Fisik)' }
-    ];
+export default function DataEngineerDashboard() {
+    const [recentData, setRecentData] = useState<any[]>([]);
+    const [totalRows, setTotalRows] = useState<number>(0);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // MENGAMBIL DATA DARI DATABASE
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const res = await fetch('/api/data-engineer/dashboard');
+                const data = await res.json();
+                if (res.ok) {
+                    setRecentData(data.recentData);
+                    setTotalRows(data.totalRows);
+                }
+            } catch (error) {
+                console.error("Gagal mengambil data:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    // FUNGSI FORMAT ANGKA JUTAAN (Misal: 1245000 -> 1.24M)
+    const formatTotalRows = (num: number) => {
+        if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num.toString();
+    };
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
@@ -58,11 +75,11 @@ export default function DataEngineerDashboard() {
                         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-1 group-hover/card:text-[#4f46e5] transition-colors">Total Baris Data Historis</p>
 
                         <div className="relative group/number inline-block cursor-help border-b border-dashed border-slate-300 hover:border-[#6A7BFA] transition-colors pb-0.5">
-                            <h3 className="text-2xl lg:text-3xl font-bold text-slate-900">1.24M <span className="text-xl text-slate-400 font-medium">Rows</span></h3>
+                            <h3 className="text-2xl lg:text-3xl font-bold text-slate-900">{formatTotalRows(totalRows)} <span className="text-xl text-slate-400 font-medium">Rows</span></h3>
 
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover/number:block bg-slate-900 text-white p-3 rounded-xl shadow-2xl z-50 min-w-[200px] pointer-events-none animate-in fade-in slide-in-from-bottom-2 text-center">
                                 <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1">Jumlah Aktual DB</p>
-                                <p className="text-lg font-black text-emerald-400 tracking-tight">1.245.892 <span className="text-sm font-medium opacity-80">Baris</span></p>
+                                <p className="text-lg font-black text-emerald-400 tracking-tight">{totalRows.toLocaleString('id-ID')} <span className="text-sm font-medium opacity-80">Baris</span></p>
                                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-900 rotate-45"></div>
                             </div>
                         </div>
@@ -141,22 +158,30 @@ export default function DataEngineerDashboard() {
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {dummyRecentData.map((row) => (
-                                <tr key={row.no} className="border-b border-slate-50 hover:bg-[#EDF2FE]/50 transition-colors">
-                                    <td className="p-4 pl-6 font-bold text-slate-400">{row.no}</td>
-                                    <td className="p-4 font-semibold text-slate-900">{row.retailer}</td>
-                                    <td className="p-4 text-slate-500 font-mono text-xs">{row.id}</td>
-                                    <td className="p-4"><span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{row.date}</span></td>
-                                    <td className="p-4 text-slate-600">{row.region}</td>
-                                    <td className="p-4 text-slate-600 font-medium">{row.state}</td>
-                                    <td className="p-4 text-slate-600">{row.city}</td>
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={14} className="p-8 text-center text-slate-500 font-medium animate-pulse">Memuat data historis dari database...</td>
+                                </tr>
+                            ) : recentData.length === 0 ? (
+                                <tr>
+                                    <td colSpan={14} className="p-8 text-center text-slate-500 font-medium">Belum ada data historis yang tersedia.</td>
+                                </tr>
+                            ) : recentData.map((row: any, index: number) => (
+                                <tr key={row.id} className="border-b border-slate-50 hover:bg-[#EDF2FE]/50 transition-colors">
+                                    <td className="p-4 pl-6 font-bold text-slate-400">{index + 1}</td>
+                                    <td className="p-4 font-semibold text-slate-900">{row.retailer?.name || 'N/A'}</td>
+                                    <td className="p-4 text-slate-500 font-mono text-[10px]">{row.retailerId.substring(0, 8)}...</td>
+                                    <td className="p-4"><span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span></td>
+                                    <td className="p-4 text-slate-600">{row.retailer?.region || '-'}</td>
+                                    <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || '-'}</td>
+                                    <td className="p-4 text-slate-600">{row.retailer?.city || '-'}</td>
                                     <td className="p-4 font-semibold text-slate-700">{row.product}</td>
-                                    <td className="p-4 text-slate-600 font-medium text-right">Rp {row.price.toLocaleString('id-ID')}</td>
-                                    <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{row.units.toLocaleString('id-ID')}</td>
-                                    <td className="p-4 text-emerald-600 font-bold text-right">Rp {row.totalSales.toLocaleString('id-ID')}</td>
-                                    <td className="p-4 text-[#4f46e5] font-bold text-right bg-[#EDF2FE]/30">Rp {row.profit.toLocaleString('id-ID')}</td>
-                                    <td className="p-4 text-amber-600 font-bold text-right">{(row.margin * 100).toFixed(0)}%</td>
-                                    <td className="p-4 pr-6 text-slate-500 text-xs">{row.method}</td>
+                                    <td className="p-4 text-slate-600 font-medium text-right">Rp {row.pricePerUnit?.toLocaleString('id-ID')}</td>
+                                    <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{row.unitsSold?.toLocaleString('id-ID')}</td>
+                                    <td className="p-4 text-emerald-600 font-bold text-right">Rp {row.totalSales?.toLocaleString('id-ID')}</td>
+                                    <td className="p-4 text-[#4f46e5] font-bold text-right bg-[#EDF2FE]/30">Rp {row.operatingProfit?.toLocaleString('id-ID')}</td>
+                                    <td className="p-4 text-amber-600 font-bold text-right">{(row.operatingMargin * 100).toFixed(0)}%</td>
+                                    <td className="p-4 pr-6 text-slate-500 text-xs">{row.salesMethod}</td>
                                 </tr>
                             ))}
                         </tbody>
