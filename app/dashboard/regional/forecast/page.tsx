@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import ReactECharts from 'echarts-for-react';
-import { BrainCircuit, Loader2, Info, Building2, Store, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, AlertCircle } from 'lucide-react';
+import { BrainCircuit, Loader2, Info, Building2, Store, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, AlertCircle, ServerOff, X } from 'lucide-react';
 
 export default function RegionalForecastPage() {
     const { data: session } = useSession();
@@ -12,6 +12,9 @@ export default function RegionalForecastPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isPredicting, setIsPredicting] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+    // KUNCI KEJUJURAN: Status koneksi FastAPI (Saat ini hardcoded FALSE karena belum dibuat)
+    const [isFastApiConnected, setIsFastApiConnected] = useState(false);
 
     const [filterCity, setFilterCity] = useState('Semua Kota');
     const [filterRetailer, setFilterRetailer] = useState('Semua Retailer');
@@ -26,10 +29,12 @@ export default function RegionalForecastPage() {
     const filterRef = useRef<HTMLDivElement>(null);
 
     const [insightTime, setInsightTime] = useState('');
-    const [currentInsightText, setCurrentInsightText] = useState(`Komparasi API Logistik ${userState} vs Algoritma Random Forest: Kuota suplai agregat wilayah ini tidak akan mencukupi lonjakan permintaan sektor produk utama pada minggu ke-3.`);
+    const [currentInsightText, setCurrentInsightText] = useState('');
 
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
+
+    // STATE DATA - DIBIARKAN KOSONG/NULL
     const [forecastData, setForecastData] = useState<any>(null);
 
     const updateTimestamp = () => {
@@ -46,14 +51,14 @@ export default function RegionalForecastPage() {
     };
 
     useEffect(() => {
-        setInsightTime(updateTimestamp());
         fetch('/api/admin/locations')
             .then(res => res.json())
             .then(data => {
                 setMasterCities(data.cities.filter((c: any) => c.provinceName.toUpperCase() === userState.toUpperCase()));
                 setMasterRetailers(data.retailers);
                 setIsLoading(false);
-            });
+            })
+            .catch(() => setIsLoading(false));
         fetchHistory();
     }, [userState, userEmail]);
 
@@ -70,25 +75,15 @@ export default function RegionalForecastPage() {
 
     const availableRetailers = filterCity === 'Semua Kota' ? masterRetailers : masterRetailers.filter(r => r.cityName === filterCity);
 
+    // PERBAIKAN: Mencegah eksekusi dummy data
     const handleGenerateForecast = () => {
+        if (!isFastApiConnected) {
+            showToast("FastAPI Offline", "Tidak dapat menarik prediksi karena mesin Machine Learning belum terhubung ke sistem.", true);
+            return;
+        }
+
+        // --- NANTI LOGIKANYA MASUK SINI SETELAH FASTAPI JALAN ---
         setIsPredicting(true);
-        setTimeout(() => {
-            setIsPredicting(false);
-            setInsightTime(updateTimestamp());
-            const areaText = filterCity === 'Semua Kota' ? `seluruh kota di ${userState}` : `wilayah ${filterCity}`;
-            const retailerText = filterRetailer === 'Semua Retailer' ? 'seluruh jaringan mitra' : `jaringan ${filterRetailer}`;
-            const produkText = filterProduct === 'Semua Kategori Produk' ? 'produk utama' : `sektor ${filterProduct}`;
-
-            setCurrentInsightText(`Berdasarkan integrasi API Logistik Provinsi, terdeteksi potensi krisis inventaris ${produkText} untuk ${retailerText} di ${areaText}. Sistem menyarankan segera eskalasi permohonan kuota ke Pusat.`);
-
-            setForecastData({
-                actual: [45, 52, 48, 65, 78, null, null, null],
-                optimis: [null, null, null, null, 78, 85, 98, 115],
-                prediksi: [null, null, null, null, 78, 82, 89, 95],
-                pesimis: [null, null, null, null, 78, 79, 81, 83]
-            });
-            showToast("Analisis Selesai", "Prediksi AI dan Data API Logistik berhasil dimuat.");
-        }, 1500);
     };
 
     const handleBroadcastAlert = async () => {
@@ -97,7 +92,7 @@ export default function RegionalForecastPage() {
             const res = await fetch('/api/regional/escalation', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ state: userState, email: userEmail, insight: currentInsightText })
+                body: JSON.stringify({ state: userState, email: userEmail, insight: currentInsightText || "Permohonan eskalasi kuota logistik darurat." })
             });
 
             if (res.ok) {
@@ -128,18 +123,24 @@ export default function RegionalForecastPage() {
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-6 relative">
             {toastMsg && (
-                <div className={`fixed top-24 right-6 lg:right-10 z-[9999] border rounded-[24px] p-4 flex gap-4 items-center shadow-[0_20px_50px_-15px_rgba(0,0,0,0.3)] animate-in slide-in-from-right-8 fade-in duration-300 max-w-md ${toastMsg.isAlert ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
-                    <div className={`p-3 rounded-full shrink-0 ${toastMsg.isAlert ? 'bg-emerald-100 text-emerald-600' : 'bg-[#EDF2FE] text-[#4f46e5]'}`}>
-                        {toastMsg.isAlert ? <CheckCircle2 size={20} /> : <BrainCircuit size={20} />}
+                <div className={`fixed top-24 right-6 lg:right-10 z-[9999] border rounded-[24px] p-4 flex gap-4 items-center shadow-[0_20px_50px_-15px_rgba(0,0,0,0.3)] animate-in slide-in-from-right-8 fade-in duration-300 max-w-md ${toastMsg.isAlert ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-slate-200 text-slate-900'}`}>
+                    <div className={`p-3 rounded-full shrink-0 ${toastMsg.isAlert ? 'bg-amber-100 text-amber-600' : 'bg-[#EDF2FE] text-[#4f46e5]'}`}>
+                        {toastMsg.isAlert ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
                     </div>
-                    <div><h4 className="font-bold text-slate-900 text-sm">{toastMsg.title}</h4><p className="text-xs text-slate-500 mt-0.5">{toastMsg.desc}</p></div>
-                    <button onClick={() => setToastMsg(null)} className="ml-2 text-slate-400 hover:text-slate-600"><AlertCircle size={16} /></button>
+                    <div><h4 className="font-bold text-sm">{toastMsg.title}</h4><p className="text-xs text-slate-500 mt-0.5">{toastMsg.desc}</p></div>
+                    <button onClick={() => setToastMsg(null)} className="ml-2 text-slate-400 hover:text-slate-600"><X size={16} /></button>
                 </div>
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
                 <div>
-                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">AI Forecasting Regional</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-3xl font-bold text-slate-900 tracking-tight">AI Forecasting Regional</h2>
+                        {/* BADGE OFFLINE */}
+                        <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-600 text-[11px] font-bold rounded-full uppercase tracking-wider shadow-sm">
+                            <ServerOff size={12} /> FastAPI Offline
+                        </span>
+                    </div>
                     <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5"><Info size={16} className="text-[#6A7BFA]" /> Analisis tren gabungan {userState} & eskalasi kuota ke Pusat.</p>
                 </div>
             </div>
@@ -200,7 +201,12 @@ export default function RegionalForecastPage() {
                     </div>
 
                     <div className="w-full xl:w-auto shrink-0 relative z-20">
-                        <button onClick={handleGenerateForecast} disabled={isPredicting || isBroadcasting} className="w-full xl:w-auto bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] hover:shadow-lg text-white px-8 py-3.5 rounded-[20px] font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-70">
+                        {/* PERBAIKAN: Tombol diblokir dan warna diganti pucat karena FastAPI Offline */}
+                        <button
+                            onClick={handleGenerateForecast}
+                            disabled={!isFastApiConnected}
+                            className={`w-full xl:w-auto px-8 py-3.5 rounded-[20px] font-bold text-sm transition-all flex items-center justify-center gap-2 ${isFastApiConnected ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] hover:shadow-lg text-white active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}`}
+                        >
                             {isPredicting ? <><Loader2 size={18} className="animate-spin" /> Menarik Data...</> : <><Sparkles size={18} /> Komparasi API & AI</>}
                         </button>
                     </div>
@@ -208,20 +214,23 @@ export default function RegionalForecastPage() {
             </div>
 
             <div className="bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col relative overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out delay-200 fill-mode-both z-10 min-h-[400px]">
+
+                {/* PERBAIKAN: STATE SAAT FAST API BELUM TERHUBUNG */}
                 {!forecastData && !isPredicting && (
-                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50">
-                        <div className="bg-white p-6 rounded-full shadow-sm border border-slate-100 mb-4 animate-bounce"><BrainCircuit size={48} className="text-[#6A7BFA]/50" /></div>
-                        <span className="font-bold text-xl text-slate-600 mb-2">Area Analisis Kosong</span>
-                        <p className="text-sm font-medium text-slate-500">Pilih parameter wilayah dan klik "Komparasi API & AI" untuk memuat hasil.</p>
-                    </div>
-                )}
-                {isPredicting && (
-                    <div className="absolute inset-0 bg-white/90 backdrop-blur-md z-30 flex flex-col items-center justify-center text-[#4f46e5] gap-4 animate-in fade-in duration-300">
-                        <Loader2 size={36} className="animate-spin" /><span className="font-bold text-xl text-slate-800">Menyinkronkan API Gudang Provinsi...</span>
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 p-6 text-center">
+                        <div className="bg-white p-6 rounded-full shadow-sm border border-slate-100 mb-4 animate-pulse">
+                            <ServerOff size={48} className="text-amber-500/50" />
+                        </div>
+                        <span className="font-bold text-xl text-slate-700 mb-2 tracking-tight">Mesin Prediksi AI Belum Terhubung</span>
+                        <p className="text-sm font-medium text-slate-500 max-w-md">
+                            Fitur komparasi algoritma dan *forecasting* membutuhkan koneksi langsung ke server Machine Learning (FastAPI). <br /><br />
+                            Status saat ini: <strong className="text-amber-600">OFFLINE</strong>.
+                        </p>
                     </div>
                 )}
 
-                <div className={`transition-opacity duration-500 ${forecastData && !isPredicting ? 'opacity-100' : 'opacity-0'}`}>
+                {/* --- SISA KODE DI BAWAH INI AKAN MUNCUL SAAT FASTAPI SUDAH JALAN --- */}
+                <div className={`transition-opacity duration-500 ${forecastData && !isPredicting ? 'opacity-100' : 'opacity-0 hidden'}`}>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                         <div className="flex items-center gap-2 bg-[#EDF2FE] px-4 py-2 rounded-full text-[#4f46e5] text-xs font-bold border border-[#6A7BFA]/20 w-fit"><BrainCircuit size={16} /> Regional Macro Prediction Model</div>
                         <div className="flex items-center gap-2 bg-emerald-50 px-4 py-2 rounded-full text-emerald-600 text-xs font-bold border border-emerald-100 w-fit shadow-sm"><span className="relative flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span> API Gudang Provinsi Tersinkronisasi</div>

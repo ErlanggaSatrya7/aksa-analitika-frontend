@@ -23,7 +23,7 @@ model users {
 }
 
 model retailers {
-  id              String            @id @default(uuid()) // Tambahkan ini
+  id                String              @id @default(uuid())
   name              String
   region            String
   state             String
@@ -33,10 +33,28 @@ model retailers {
   users             users[]
 }
 
+// TABEL BARU: Untuk melacak riwayat upload file dataset
+model dataset_uploads {
+  id          String       @id @default(uuid())
+  fileName    String
+  fileSize    String?
+  totalRows   Int
+  uploadedBy  String       
+  uploadedAt  DateTime     @default(now()) @db.Timestamptz(6)
+  
+  sales_data  sales_data[] 
+}
+
 model sales_data {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
+  rowId           Int      @default(autoincrement()) // <-- TAMBAHKAN BARIS INI
   retailerId      String
-  invoiceDate     DateTime  @db.Timestamptz(6)
+  
+  // TAMBAHAN: Relasi ke tabel upload file
+  uploadId        String?  
+  dataset_upload  dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  invoiceDate     DateTime @db.Timestamptz(6)
   product         String
   pricePerUnit    Float
   unitsSold       Int
@@ -48,6 +66,7 @@ model sales_data {
 
   @@index([invoiceDate])
   @@index([retailerId])
+  @@index([uploadId]) // Index tambahan agar proses hapus data massal sangat cepat
 }
 
 model logistic_requests {
@@ -70,6 +89,14 @@ model notifications {
   user        users    @relation(fields: [userId], references: [id])
 }
 
+model audit_logs {
+  id        String   @id @default(uuid())
+  action    String   // Akan berisi "UPLOAD" atau "DELETE"
+  fileName  String
+  totalRows Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
 enum Role {
   DATA_ENGINEER
   SUPER_ADMIN
@@ -81,7 +108,7 @@ enum Role {
 enum UserStatus {
   INVITED
   ACTIVE
-  SUSPENDED // <-- Tambahkan baris ini
+  SUSPENDED
 }
 
 enum LogisticStatus {

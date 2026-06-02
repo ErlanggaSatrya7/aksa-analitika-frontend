@@ -1,8 +1,12 @@
 "use client";
 import React, { useState } from 'react';
-import { User, BellRing, ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { User, BellRing, ShieldCheck, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 export default function DataEngineerProfilePage() {
+    const { data: session, status } = useSession();
+    const user = session?.user as any;
+
     const [activeTab, setActiveTab] = useState('profil');
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
 
@@ -10,6 +14,24 @@ export default function DataEngineerProfilePage() {
         setToast({ message: "Profil berhasil diperbarui", type: 'success' });
         setTimeout(() => setToast(null), 3000);
     };
+
+    // Ekstrak data user dari session NextAuth (Disamakan dengan Layout)
+    const fullName = user?.name || 'Data Engineer';
+    const email = user?.email || 'email@perusahaan.com';
+    const role = user?.role || 'DATA_ENGINEER';
+
+    // Generate avatar persis seperti di sidebar (menggunakan DiceBear Notionists)
+    const avatarSeed = user?.email || 'data-engineer';
+    const avatarUrl = user?.image || `https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`;
+
+    if (status === 'loading') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                <Loader2 size={48} className="text-[#4f46e5] animate-spin mb-4" />
+                <p className="text-slate-500 font-medium">Memuat data profil...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="pb-10 max-w-6xl mx-auto animate-in fade-in duration-500 relative">
@@ -28,7 +50,7 @@ export default function DataEngineerProfilePage() {
 
             <div className="flex flex-col md:flex-row gap-6 md:gap-8">
 
-                {/* KIRI: SIDEBAR NAVIGASI TAB (Grid di Mobile) */}
+                {/* KIRI: SIDEBAR NAVIGASI TAB */}
                 <div className="w-full md:w-[280px] shrink-0">
                     <div className="bg-white border border-slate-100 rounded-[24px] md:rounded-[32px] p-2 md:p-4 grid grid-cols-3 md:flex md:flex-col gap-2 shadow-sm md:shadow-[0_8px_30px_rgba(0,0,0,0.03)]">
                         <button onClick={() => setActiveTab('profil')} className={`flex flex-col md:flex-row items-center justify-center md:justify-start gap-1.5 md:gap-3 px-2 py-3 md:px-4 md:py-3.5 rounded-xl md:rounded-2xl transition-all ${activeTab === 'profil' ? 'bg-[#EDF2FE] text-[#6A7BFA] shadow-sm md:shadow-none border border-[#6A7BFA]/10 md:border-transparent' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
@@ -53,7 +75,8 @@ export default function DataEngineerProfilePage() {
                         <div className="animate-in fade-in slide-in-from-right-4">
                             <h4 className="font-bold text-xl md:text-2xl text-slate-900 mb-6 md:mb-8">Informasi Dasar</h4>
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 mb-8 md:mb-10 pb-8 md:pb-10 border-b border-slate-100">
-                                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2.5&w=256&h=256&q=80" alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover shadow-md border-4 border-[#EDF2FE]" />
+                                {/* BACKGROUND AVATAR DIBERI SLATE-100 AGAR TRANSPARANSI DICEBEAR TERLIHAT BAGUS */}
+                                <img src={avatarUrl} alt="Profile" className="w-20 h-20 md:w-24 md:h-24 rounded-full object-cover shadow-md border-4 border-white bg-slate-100" />
                                 <div className="flex flex-wrap gap-2 sm:gap-3">
                                     <button className="text-xs md:text-sm font-bold text-white bg-[#6A7BFA] hover:bg-[#5869E8] px-5 md:px-6 py-2.5 md:py-3 rounded-full transition-colors shadow-md active:scale-95">Ganti Foto</button>
                                     <button className="text-xs md:text-sm font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-5 md:px-6 py-2.5 md:py-3 rounded-full transition-colors border border-slate-200">Hapus</button>
@@ -63,15 +86,15 @@ export default function DataEngineerProfilePage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl">
                                 <div>
                                     <label className="text-[11px] md:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Nama Lengkap</label>
-                                    <input type="text" defaultValue="Nadya Maharani" className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 focus:border-[#6A7BFA]" />
+                                    <input type="text" defaultValue={fullName} className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 focus:border-[#6A7BFA]" />
                                 </div>
                                 <div>
                                     <label className="text-[11px] md:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Email Perusahaan</label>
-                                    <input type="email" defaultValue="nadya@aksa.com" disabled className="w-full mt-2 bg-slate-100 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-400 cursor-not-allowed" />
+                                    <input type="email" defaultValue={email} disabled className="w-full mt-2 bg-slate-100 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-400 cursor-not-allowed" />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className="text-[11px] md:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Jabatan / Spesialisasi</label>
-                                    <input type="text" defaultValue="Lead Data Engineer" disabled className="w-full mt-2 bg-slate-100 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-400 cursor-not-allowed" />
+                                    <label className="text-[11px] md:text-xs font-bold text-slate-500 uppercase tracking-widest ml-2">Role / Akses Sistem</label>
+                                    <input type="text" defaultValue={role.replace(/_/g, ' ')} disabled className="w-full mt-2 bg-slate-100 border border-slate-200 rounded-[20px] px-5 py-3.5 md:py-4 text-sm font-semibold text-slate-400 cursor-not-allowed uppercase" />
                                 </div>
                             </div>
                         </div>

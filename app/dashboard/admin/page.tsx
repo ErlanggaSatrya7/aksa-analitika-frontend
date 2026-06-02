@@ -7,30 +7,40 @@ import Link from 'next/link';
 
 export default function RingkasanNasional() {
     const [isLoading, setIsLoading] = useState(true);
-    // 🔥 STATE PENJAGA: Mencegah Echarts Crash
+    // STATE PENJAGA: Mencegah Echarts Crash (Hanya true jika map berhasil diregister)
     const [isMapLoaded, setIsMapLoaded] = useState(false);
 
     const [activeTrendTab, setActiveTrendTab] = useState<'trend' | 'channel'>('trend');
     const [activePortoTab, setActivePortoTab] = useState<'produk' | 'retailer'>('produk');
-
     const [dashboardData, setDashboardData] = useState<any>(null);
 
     useEffect(() => {
-        Promise.all([
-            // 🔥 PERBAIKAN: Ubah ekstensi menjadi .geojson
-            fetch('/indonesia.geojson').then(async (res) => {
-                const text = await res.text();
-                try {
-                    return JSON.parse(text);
-                } catch (e) {
-                    console.error("File bukan JSON/GeoJSON yang valid. Isinya:", text.substring(0, 50));
-                    return null;
-                }
-            }),
-            fetch('/api/admin/analytics/dashboard').then((res) => res.json())
-        ])
+        // Fungsi khusus untuk mengambil GeoJSON dengan aman
+        const fetchMapData = async () => {
+            try {
+                const res = await fetch('/indonesia.geojson');
+                if (!res.ok) throw new Error("File GeoJSON tidak ditemukan (404)");
+                const geoJson = await res.json();
+                return geoJson;
+            } catch (error) {
+                console.error("Gagal memuat peta:", error);
+                return null;
+            }
+        };
+
+        const fetchDashboardData = async () => {
+            try {
+                const res = await fetch('/api/admin/analytics/dashboard');
+                return await res.json();
+            } catch (error) {
+                console.error("Gagal memuat data dashboard:", error);
+                return null;
+            }
+        };
+
+        Promise.all([fetchMapData(), fetchDashboardData()])
             .then(([mapData, dbData]) => {
-                // Pastikan mapData valid dan memiliki features
+                // 1. DAFTARKAN PETA (Hanya jika file GeoJSON valid)
                 if (mapData && mapData.features) {
                     const geojsonNameTranslator: Record<string, string> = {
                         "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
@@ -57,20 +67,16 @@ export default function RingkasanNasional() {
                         feature.properties.Propinsi = pName;
                     });
 
+                    // HARUS SAMA dengan properti "map" di opsi Echarts nanti
                     echarts.registerMap('indonesia_nasional', mapData);
-                    setIsMapLoaded(true);
-                } else {
-                    console.warn("Peta tidak dirender karena data GeoJSON kosong atau salah format.");
+                    setIsMapLoaded(true); // Izinkan peta untuk dirender
                 }
 
+                // 2. SIMPAN DATA API
                 setDashboardData(dbData);
                 setIsLoading(false);
-            })
-            .catch((err) => {
-                console.error("Gagal menarik data:", err);
-                setIsLoading(false);
             });
-    }, []); 
+    }, []);
 
     const mapDataFormatted = dashboardData?.mapDistribution?.map((d: any) => ({
         name: d.name.toUpperCase(),
@@ -81,8 +87,15 @@ export default function RingkasanNasional() {
         backgroundColor: 'transparent',
         tooltip: { trigger: 'item', backgroundColor: '#ffffff', textStyle: { color: '#0F172A', fontSize: 13 }, borderWidth: 1, borderColor: '#E2E8F0', padding: [10, 14], formatter: (params: any) => `<div style="font-weight:600; font-size:11px; text-transform:uppercase; color:#64748B; margin-bottom:4px;">${params.name || 'Wilayah'}</div><div style="color:#6A7BFA; font-weight:bold; font-size:15px;">${params.value ? (params.value).toLocaleString('id-ID') : 0} Unit</div>` },
         visualMap: { min: 0, max: 50000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#A3B1FF', '#4f46e5'] }, show: false },
-        series: [{  
-            name: 'Volume Provinsi', type: 'map', map: 'indonesia_nasional', nameProperty: 'Propinsi', roam: true, label: { show: false }, itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1 }, emphasis: { itemStyle: { areaColor: '#A3B1FF' }, label: { show: false } },
+        series: [{
+            name: 'Volume Provinsi',
+            type: 'map',
+            map: 'indonesia_nasional', // PASTIKAN SAMA DENGAN NAMA DI REGISTER MAP
+            nameProperty: 'Propinsi',
+            roam: true,
+            label: { show: false },
+            itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1 },
+            emphasis: { itemStyle: { areaColor: '#A3B1FF' }, label: { show: false } },
             data: mapDataFormatted
         }]
     };
@@ -117,7 +130,7 @@ export default function RingkasanNasional() {
         series: [{ name: 'Retailer', type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: false, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: false }, data: dashboardData?.retailerShare || [] }]
     };
 
-    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3"><Loader2 size={24} className="animate-spin" /><span className="font-medium tracking-widest uppercase text-sm">Memuat Database Nasional...</span></div>;
+    if (isLoading) return <div className="w-full h-[80vh] flex flex-col items-center justify-center text-[#6A7BFA] gap-4"><Loader2 size={36} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Memuat Database Nasional...</span></div>;
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
@@ -170,14 +183,15 @@ export default function RingkasanNasional() {
                         <div><h3 className="text-xl font-bold text-slate-900">Sebaran Penjualan Unit</h3><p className="text-slate-500 text-xs mt-0.5">Performa wilayah aktual berdasar letak geografis</p></div>
                     </div>
 
-                    {/* 🔥 PERBAIKAN: ECHARTS HANYA RENDER JIKA PETA SUDAH SIAP */}
-                    <div className="w-full h-[400px] relative z-10 rounded-[24px] bg-[#F8FAFC] border border-slate-100 overflow-hidden">
+                    {/* GUARD ECHARTS: PETA HANYA MUNCUL JIKA JSON SUDAH TER-LOAD */}
+                    <div className="w-full h-[400px] relative z-10 rounded-[24px] bg-[#F8FAFC] border border-slate-100 overflow-hidden flex items-center justify-center">
                         {isMapLoaded ? (
                             <ReactECharts option={miniMapOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />
                         ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 font-semibold text-sm gap-3">
+                            <div className="flex flex-col items-center justify-center text-slate-400 font-semibold text-sm gap-3">
                                 <Loader2 size={32} className="animate-spin text-[#6A7BFA]" />
-                                <span>Mempersiapkan Peta...</span>
+                                <span className="text-slate-500">Menyinkronkan Peta Interaktif...</span>
+                                <span className="text-xs font-normal text-slate-400">Pastikan file indonesia.geojson ada di folder public/</span>
                             </div>
                         )}
                     </div>

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react'; // IMPORT SESI DAN SIGNOUT
 import {
     CloudUpload, History, LogOut, Database, Menu, X,
     LayoutDashboard, User, Settings, BellRing, ShieldCheck,
@@ -11,6 +12,13 @@ import {
 export default function DataEngineerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
+
+    // --- PENGAMBILAN DATA SESI DINAMIS ---
+    const { data: session } = useSession();
+    const user = session?.user as any;
+    const userName = user?.name || 'Data Engineer';
+    const firstName = userName.split(' ')[0]; // Ambil nama depan untuk sapaan header
+    const avatarSeed = user?.email || 'data-engineer';
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
@@ -40,10 +48,15 @@ export default function DataEngineerLayout({ children }: { children: React.React
         else if (hour >= 15 && hour < 18) setGreeting('Selamat Sore');
         else setGreeting('Selamat Malam');
 
-        setCurrentLocation('Sidoarjo, ID');
-    }, []);
+        // LOKASI DINAMIS DARI DATA USER
+        setCurrentLocation(user?.assignedCity ? `${user.assignedCity}, ID` : 'HQ Pusat, ID');
+    }, [user?.assignedCity]);
 
-    const handleLogout = () => router.push('/');
+    // FUNGSI LOGOUT YANG BENAR (MENGHAPUS SESI NEXT-AUTH)
+    const handleLogout = async () => {
+        await signOut({ callbackUrl: '/' });
+    };
+
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
     const showToast = (message: string, type: 'success' | 'warning') => {
@@ -106,7 +119,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
             <aside className={`fixed lg:relative top-0 left-0 h-[100dvh] w-[280px] bg-[#ffffff] flex flex-col py-6 px-5 z-[100] rounded-r-[32px] lg:rounded-none lg:rounded-br-[40px] lg:border-r lg:border-slate-100 shadow-[20px_0_40px_rgba(0,0,0,0.1)] lg:shadow-none transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex items-center justify-between mb-8 px-3 shrink-0">
                     <div className="flex items-center gap-3">
-                        {/* UPDATE: Memakai logo gambar orisinal */}
                         <img
                             src="/Logo-AksaAnalitika-BgWhite.png"
                             alt="AKSA Analitika"
@@ -148,9 +160,13 @@ export default function DataEngineerLayout({ children }: { children: React.React
                     <Link href="/dashboard/data-engineer/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2.5&w=256&h=256&q=80" alt="Profile Nadya" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
+                            {/* AVATAR DINAMIS */}
+                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
                             <div className="overflow-hidden">
-                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#6A7BFA] ${pathname.includes('/profile') ? 'text-[#6A7BFA]' : 'text-slate-900'}`}>Nadya Maharani</p>
+                                {/* NAMA DINAMIS */}
+                                <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#6A7BFA] ${pathname.includes('/profile') ? 'text-[#6A7BFA]' : 'text-slate-900'}`}>
+                                    {userName}
+                                </p>
                                 <p className="text-[11px] text-slate-500 font-medium truncate">Lead Data Engineer</p>
                             </div>
                         </div>
@@ -171,24 +187,24 @@ export default function DataEngineerLayout({ children }: { children: React.React
                             <Menu size={22} strokeWidth={2.5} />
                         </button>
 
-                        {/* UPDATE: Logo Mobile dikembalikan proporsional */}
                         <img
                             src="/Logo-AksaAnalitika-BgWhite.png"
                             alt="AKSA Analitika"
                             className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm"
                         />
 
-                        {/* Profil Kanan Mulus */}
+                        {/* Profil Kanan Mulus Mobile (AVATAR DINAMIS) */}
                         <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2.5&w=256&h=256&q=80" alt="Profile" className="w-full h-full object-cover" />
+                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-full h-full object-cover" />
                         </div>
                     </div>
 
                     {/* KHUSUS DESKTOP HEADER */}
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
+                            {/* NAMA SAPAAN DINAMIS */}
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, Nadya! 👋`}
+                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
                             </h2>
                             <p className="text-xs font-medium text-slate-500 mt-1">Pusat Ingesti Data & Pipeline ETL</p>
                         </div>
@@ -270,4 +286,4 @@ export default function DataEngineerLayout({ children }: { children: React.React
             `}} />
         </div>
     );
-}
+}   

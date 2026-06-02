@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import {
     LayoutDashboard, Trophy, TrendingUp, LogOut, MapPin, Bot, X, Send,
-    Menu, Settings, AlertTriangle, CheckCircle2, ShieldCheck, Inbox, Bell, BrainCircuit
+    Menu, Settings, AlertTriangle, CheckCircle2, ShieldCheck, Inbox, Bell, BrainCircuit, ServerOff
 } from 'lucide-react';
 
 export default function ProvinceLayout({ children }: { children: React.ReactNode }) {
@@ -24,6 +24,9 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+    // KUNCI KEJUJURAN: Status koneksi FastAPI
+    const [isFastApiConnected, setIsFastApiConnected] = useState(false);
 
     // State Chatbot & Toast
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -130,25 +133,22 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
         setTimeout(() => setToast(null), 3000);
     };
 
+    // PERBAIKAN: Chatbot Jujur & Terkunci jika FastAPI Offline
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!isFastApiConnected) {
+            showToast("Server ML Offline: Tidak dapat memproses percakapan.", "warning");
+            return;
+        }
+
         if (!chatInput.trim()) return;
         setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
         const input = chatInput.toLowerCase();
         setChatInput('');
         setIsAiTyping(true);
 
-        setTimeout(() => {
-            const outsideState = ['jawa', 'bali', 'kalimantan', 'papua', 'sulawesi', 'jakarta'];
-            const isAskingOutside = outsideState.some(r => input.includes(r)) && !input.includes(userState.toLowerCase());
-
-            if (isAskingOutside) {
-                setChatMessages(prev => [...prev, { role: 'ai', text: `Mohon maaf, wewenang saya hanya untuk merangkum data Provinsi ${userState} sesuai dengan otorisasi akun Anda.` }]);
-            } else {
-                setChatMessages(prev => [...prev, { role: 'ai', text: `Berdasarkan performa ${userState} saat ini, wilayah tertentu tercatat memiliki margin terendah. Saran: Fokuskan promo ke wilayah tersebut.` }]);
-            }
-            setIsAiTyping(false);
-        }, 1500);
+        // Fetch ke FastAPI sesungguhnya akan ditaruh di sini nanti
     };
 
     return (
@@ -298,12 +298,28 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                 <div className="fixed bottom-6 right-4 sm:right-6 lg:bottom-10 lg:right-10 z-[80] flex flex-col items-end">
                     {isChatOpen && (
                         <div className="bg-white/95 backdrop-blur-xl w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.3)] border border-slate-200/50 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+
+                            {/* PERBAIKAN: Header tetap menggunakan warna gradient ungu kebiruan */}
                             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md relative z-10 shrink-0">
-                                <div className="flex items-center gap-3"><Bot size={24} /><span className="font-bold text-base tracking-tight">Gemma State AI</span></div>
+                                <div className="flex items-center gap-3">
+                                    <Bot size={24} />
+                                    <div>
+                                        <span className="font-bold text-base tracking-tight block leading-tight">Gemma State AI</span>
+                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerOff size={10} /> Offline</span>}
+                                    </div>
+                                </div>
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-90"><X size={20} /></button>
                             </div>
+
                             <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50/50 space-y-4 text-sm custom-scrollbar relative z-0">
-                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">Halo! Apa yang ingin dianalisis hari ini?</div>
+                                {/* PERBAIKAN: Pesan awal jujur tanpa dummy */}
+                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
+                                    {isFastApiConnected
+                                        ? `Halo! Apa yang ingin dianalisis hari ini tentang performa ${userState}?`
+                                        : "Halo! Saat ini model Gemma 4 AI belum terhubung ke server FastAPI. Fitur interaksi dinonaktifkan sementara."
+                                    }
+                                </div>
+
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                                         <div className={`p-4 max-w-[85%] shadow-sm font-medium leading-relaxed ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>{msg.text}</div>
@@ -319,14 +335,28 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                                     </div>
                                 )}
                             </div>
+
                             <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 relative z-10 shrink-0">
-                                <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={`Tanya performa ${userState}...`} className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all" />
-                                <button type="submit" disabled={isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full transition-all shadow-md active:scale-90 disabled:opacity-50"><Send size={18} /></button>
+                                <input
+                                    type="text"
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    disabled={!isFastApiConnected || isAiTyping}
+                                    placeholder={isFastApiConnected ? `Tanya performa ${userState}...` : "Menunggu koneksi server..."}
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                />
+                                {/* PERBAIKAN: Tombol kirim tetap gradien tapi redup (opacity-50) saat disabled */}
+                                <button type="submit" disabled={!isFastApiConnected || isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-90 flex items-center justify-center">
+                                    <Send size={18} />
+                                </button>
                             </form>
                         </div>
                     )}
-                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all duration-300 border-[3px] border-white z-[70]">
+
+                    {/* PERBAIKAN: Ikon Chatbot tetap gradien, ditambah dot peringatan jika offline */}
+                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all duration-300 border-[3px] border-white z-[70] relative">
                         {isChatOpen ? <X size={24} /> : <Bot size={26} />}
+                        {!isFastApiConnected && !isChatOpen && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-amber-400 border-2 border-white rounded-full"></span>}
                     </button>
                 </div>
             </div>

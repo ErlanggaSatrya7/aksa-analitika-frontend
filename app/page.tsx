@@ -58,8 +58,12 @@ export default function LoginPage() {
         const userRole = (session?.user as any)?.role;
 
         // PENGARAHAN ROUTER BERDASARKAN ROLE
-        if (userRole === 'SUPER_ADMIN' || userRole === 'DATA_ENGINEER') {
+        // PENGARAHAN ROUTER BERDASARKAN ROLE (SUDAH DIPISAH)
+        if (userRole === 'SUPER_ADMIN') {
           router.push('/dashboard/admin');
+        }
+        else if (userRole === 'DATA_ENGINEER') {
+          router.push('/dashboard/data-engineer'); // 🚀 Diarahkan ke rute Data Engineer yang benar
         }
         else if (userRole === 'STATE_ADMIN') {
           router.push('/dashboard/regional'); // Dashboard Provinsi

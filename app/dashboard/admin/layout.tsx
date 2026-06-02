@@ -6,7 +6,7 @@ import { useSession, signOut } from 'next-auth/react';
 import {
     BarChart3, Map as MapIcon, TrendingUp, Users, LogOut, ShieldCheck,
     Download, Bot, X, Send, AlertTriangle, CheckCircle2, Menu, Settings,
-    Inbox, Bell, BrainCircuit
+    Inbox, Bell, BrainCircuit, ServerOff
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +18,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+
+    // KUNCI KEJUJURAN: Status koneksi FastAPI
+    const [isFastApiConnected, setIsFastApiConnected] = useState(false);
 
     // State Logout Modal
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -60,7 +63,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     useEffect(() => {
         if (session?.user?.email) {
             fetchNotifications();
-            // Polling notifikasi setiap 30 detik (opsional agar real-time)
             const interval = setInterval(fetchNotifications, 30000);
             return () => clearInterval(interval);
         }
@@ -76,7 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 body: JSON.stringify({ email: session.user.email })
             });
             if (res.ok) {
-                fetchNotifications(); // Refresh data setelah diupdate
+                fetchNotifications();
                 setIsNotifOpen(false);
             }
         } catch (error) {
@@ -84,7 +86,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }
     };
 
-    // Fungsi helper format waktu database ke teks yang mudah dibaca
     const formatTimeAgo = (dateString: string) => {
         const now = new Date();
         const past = new Date(dateString);
@@ -99,7 +100,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return `${diffDays} Hari yang lalu`;
     };
 
-    // Fungsi helper menentukan warna icon berdasarkan judul pesan
     const getNotifStyle = (title: string) => {
         const t = title.toLowerCase();
         if (t.includes('memo') || t.includes('target') || t.includes('ai')) {
@@ -131,7 +131,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setCurrentLocation(location);
     }, []);
 
-    // Handle klik di luar pop-up notifikasi
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
@@ -153,20 +152,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setTimeout(() => setToast(null), 3000);
     };
 
+    // PERBAIKAN: Fungsi Chat Jujur (Tidak Ada Dummy)
     const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (!isFastApiConnected) {
+            showToast("Server ML Offline: Tidak dapat memproses percakapan.", "warning");
+            return;
+        }
+
         if (!chatInput.trim()) return;
         setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
         setChatInput('');
         setIsAiTyping(true);
-        setTimeout(() => {
-            if (chatInput.toLowerCase().includes('error')) {
-                showToast("Asisten AI Sedang Sibuk/Pemeliharaan.", "warning");
-            } else {
-                setChatMessages(prev => [...prev, { role: 'ai', text: "Berdasarkan data nasional, kerugian tertinggi ada di kategori 'Kids Apparel'. Saran: Broadcast peringatan melalui Command Center." }]);
-            }
-            setIsAiTyping(false);
-        }, 2000);
+
+        // Logika fetch ke API Chatbot yang sesungguhnya nanti diletakkan di sini
     };
 
     const formatRole = (role?: string) => {
@@ -329,7 +329,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                 {unreadCount > 0 && <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>}
                             </button>
 
-                            {/* POP-UP NOTIFIKASI DINAMIS DARI DATABASE */}
                             {isNotifOpen && (
                                 <div className="absolute right-32 top-[calc(100%+8px)] w-[300px] sm:w-[340px] bg-white rounded-[24px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 z-[100]">
                                     <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
@@ -382,18 +381,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {isChatOpen && (
                         <div className="bg-white w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
 
+                            {/* PERBAIKAN: Header Chat menampilkan status Offline jika belum terhubung */}
                             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <Bot size={24} />
-                                    <span className="font-bold text-base tracking-tight">Gemma 4 Analytics</span>
+                                    <div>
+                                        <span className="font-bold text-base tracking-tight block leading-tight">Gemma 4 Analytics</span>
+                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerOff size={10} /> Offline</span>}
+                                    </div>
                                 </div>
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar">
-                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
-                                    Halo! Saya siap membantu menganalisis data nasional. Ada yang ingin ditanyakan?
+                                {/* PERBAIKAN: Pesan awal diubah menjadi peringatan jujur */}
+                                <div className="bg-white border-slate-200 text-slate-700 border p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
+                                    {isFastApiConnected
+                                        ? "Halo! Saya siap membantu menganalisis data nasional. Ada yang ingin ditanyakan?"
+                                        : "Halo! Saat ini model Gemma 4 AI belum terhubung ke server FastAPI. Fitur interaksi dinonaktifkan sementara."
+                                    }
                                 </div>
+
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                                         <div className={`p-4 max-w-[85%] shadow-sm leading-relaxed font-medium ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>
@@ -401,6 +409,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                         </div>
                                     </div>
                                 ))}
+                                {isAiTyping && (
+                                    <div className="flex justify-start">
+                                        <div className="p-4 bg-white border border-slate-200 text-slate-400 rounded-[20px] rounded-tl-none flex gap-1.5 shadow-sm">
+                                            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                                            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-75"></div>
+                                            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150"></div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 shrink-0">
@@ -408,18 +425,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     type="text"
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
-                                    placeholder="Tanya performa..."
-                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all"
+                                    disabled={!isFastApiConnected || isAiTyping}
+                                    placeholder={isFastApiConnected ? "Tanya performa..." : "Menunggu koneksi server..."}
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                 />
-                                <button type="submit" disabled={isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95">
+                                <button type="submit" disabled={!isFastApiConnected || isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95 flex items-center justify-center">
                                     <Send size={18} />
                                 </button>
                             </form>
                         </div>
                     )}
 
+                    {/* PERBAIKAN: Tombol trigger Chatbot diganti warna jika Offline */}
                     <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all duration-300 border-[4px] border-white z-10">
                         {isChatOpen ? <X size={24} /> : <Bot size={26} />}
+                        {!isFastApiConnected && !isChatOpen && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-amber-400 border-2 border-white rounded-full"></span>}
                     </button>
                 </div>
             </div>

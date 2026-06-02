@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import ReactECharts from 'echarts-for-react';
-import { MapPin, Target, Loader2, Info, Building2, PackageSearch, Search, ChevronDown, Package, TrendingUp, TrendingDown, Store } from 'lucide-react';
+import { MapPin, Target, Loader2, ChevronDown } from 'lucide-react';
 
 export default function PetaDistribusiPage() {
     const echartsRef = useRef<ReactECharts>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isMapLoaded, setIsMapLoaded] = useState(false);
 
     const [selectedProvince, setSelectedProvince] = useState('Nasional');
     const [isFiltering, setIsFiltering] = useState(false);
@@ -15,47 +16,71 @@ export default function PetaDistribusiPage() {
     const [searchProv, setSearchProv] = useState('');
 
     const [mapAnalytics, setMapAnalytics] = useState<any>(null);
+    const [nationalMapData, setNationalMapData] = useState<any[]>([]);
     const [allProvinces, setAllProvinces] = useState<string[]>([]);
 
     useEffect(() => {
-        Promise.all([
-            fetch('/indonesia.json').then((res) => res.json()),
-            fetch(`/api/admin/analytics/map?province=Nasional`).then((res) => res.json())
-        ]).then(([geojson, dbData]) => {
+        const fetchMapData = async () => {
+            try {
+                const res = await fetch('/indonesia.geojson');
+                if (!res.ok) throw new Error("File GeoJSON tidak ditemukan (404)");
+                return await res.json();
+            } catch (error) {
+                console.error("Gagal memuat peta:", error);
+                return null;
+            }
+        };
 
-            // TRANSLATOR WAJIB: Disamakan 100% dengan Dashboard agar semua 33 Provinsi terbaca!
-            const geojsonNameTranslator: Record<string, string> = {
-                "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
-                "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
-                "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
-                "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
-                "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
-                "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
-                "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
-                "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA", "BANGKA BELITUNG": "BANGKA BELITUNG",
-                "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
-                "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
-                "KALIMANTAN UTARA": "KALIMANTAN UTARA", "KEPULAUAN RIAU": "KEPULAUAN RIAU", "BALI": "BALI"
-            };
+        const fetchDbData = async () => {
+            try {
+                const res = await fetch(`/api/admin/analytics/map?province=Nasional`);
+                return await res.json();
+            } catch (error) {
+                console.error("Gagal memuat analitik:", error);
+                return null;
+            }
+        };
 
-            geojson.features.forEach((feature: any) => {
-                const oldName = feature.properties.Propinsi ? feature.properties.Propinsi.toUpperCase() : "";
-                if (geojsonNameTranslator[oldName]) {
-                    feature.properties.Propinsi = geojsonNameTranslator[oldName];
-                } else if (oldName) {
-                    feature.properties.Propinsi = oldName;
-                }
-            });
+        Promise.all([fetchMapData(), fetchDbData()]).then(([geojson, dbData]) => {
+            if (geojson && geojson.features) {
+                const geojsonNameTranslator: Record<string, string> = {
+                    "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
+                    "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
+                    "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
+                    "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
+                    "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
+                    "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
+                    "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
+                    "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA", "BANGKA BELITUNG": "BANGKA BELITUNG",
+                    "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
+                    "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
+                    "KALIMANTAN UTARA": "KALIMANTAN UTARA", "KEPULAUAN RIAU": "KEPULAUAN RIAU", "BALI": "BALI", "KEP. BANGKA BELITUNG": "BANGKA BELITUNG",
+                    "KEP. RIAU": "KEPULAUAN RIAU", "KEPRI": "KEPULAUAN RIAU"
+                };
 
-            echarts.registerMap('indonesia_interaktif', geojson);
-            setMapAnalytics(dbData);
+                geojson.features.forEach((feature: any) => {
+                    let rawName = feature.properties.Propinsi || feature.properties.state || feature.properties.NAME_1 || "";
+                    let pName = rawName.toUpperCase();
+                    if (geojsonNameTranslator[pName]) {
+                        pName = geojsonNameTranslator[pName];
+                    }
+                    feature.properties.Propinsi = pName;
+                });
 
-            // Format list provinsi agar huruf depannya besar, tapi isinya tetap uppercase saat dicari
-            const uppercaseProvinces = (dbData.availableProvinces || []).map((p: string) => p.toUpperCase());
-            setAllProvinces(uppercaseProvinces);
+                echarts.registerMap('indonesia_interaktif', geojson);
+                setIsMapLoaded(true);
+            }
+
+            if (dbData) {
+                setMapAnalytics(dbData);
+                setNationalMapData(dbData.provinceDistribution || []);
+
+                const uppercaseProvinces = (dbData.availableProvinces || []).map((p: string) => p.toUpperCase());
+                setAllProvinces(uppercaseProvinces);
+            }
 
             setIsLoading(false);
-        }).catch(() => setIsLoading(false));
+        });
     }, []);
 
     const filteredProvinces = allProvinces.filter(prov => prov.includes(searchProv.toUpperCase()));
@@ -67,9 +92,9 @@ export default function PetaDistribusiPage() {
         setSearchProv('');
 
         try {
-            // Karena API mencari dengan query parameters, kita pass secara aman
             const res = await fetch(`/api/admin/analytics/map?province=${encodeURIComponent(provinceName)}`);
             const newData = await res.json();
+
             setMapAnalytics(newData);
 
             if (echartsRef.current && provinceName !== 'Nasional') {
@@ -88,17 +113,45 @@ export default function PetaDistribusiPage() {
         triggerDataUpdate('Nasional');
     };
 
-    // Paksa data berformat UPPERCASE agar sama persis
-    const mapDataFormatted = mapAnalytics?.provinceDistribution?.map((d: any) => ({
+    // PERBAIKAN: Menambahkan status `selected` langsung ke data provinsi yang aktif
+    const mapDataFormatted = nationalMapData.map((d: any) => ({
         name: d.name.toUpperCase(),
-        value: d.value
+        value: d.value,
+        selected: d.name.toUpperCase() === selectedProvince.toUpperCase()
     })) || [];
 
     const mainMapOption = {
         backgroundColor: 'transparent',
         tooltip: { trigger: 'item', formatter: (params: any) => `<div style="font-weight:600; font-size:13px; color:#0F172A; text-transform:uppercase;">${params.name}</div><div style="color:#6A7BFA; font-weight:bold; margin-top:4px;">Volume: ${(params.value || 0).toLocaleString('id-ID')} Unit</div>`, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E2E8F0', padding: [12, 16] },
         visualMap: { min: 0, max: 50000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#818CF8', '#4f46e5'] }, itemWidth: 10, itemHeight: 80, bottom: 20, left: 20 },
-        series: [{ name: 'Performa Provinsi', type: 'map', map: 'indonesia_interaktif', nameProperty: 'Propinsi', roam: true, label: { show: true, color: '#64748B', fontSize: 8, formatter: '{b}' }, itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1.5 }, emphasis: { itemStyle: { areaColor: '#818CF8' } }, select: { itemStyle: { areaColor: '#4f46e5' }, label: { color: '#FFFFFF' } }, selectedMode: 'single', data: mapDataFormatted }]
+        series: [{
+            name: 'Performa Provinsi',
+            type: 'map',
+            map: 'indonesia_interaktif',
+            nameProperty: 'Propinsi',
+            roam: true,
+            label: { show: true, color: '#64748B', fontSize: 8, formatter: '{b}' },
+            itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1.5 },
+            emphasis: { itemStyle: { areaColor: '#818CF8' } },
+            // PERBAIKAN EFEK HIGHLIGHT: Warna Emas/Amber, Border Putih Tebal, dan Shadow
+            select: {
+                itemStyle: {
+                    areaColor: '#F59E0B',
+                    borderColor: '#FFFFFF',
+                    borderWidth: 3,
+                    shadowColor: 'rgba(245, 158, 11, 0.7)',
+                    shadowBlur: 15
+                },
+                label: {
+                    show: true,
+                    color: '#FFFFFF',
+                    fontWeight: '900',
+                    fontSize: 10
+                }
+            },
+            selectedMode: 'single',
+            data: mapDataFormatted
+        }]
     };
 
     const barOptionTemplate = (data: any[], colorStops: any[]) => ({
@@ -109,7 +162,7 @@ export default function PetaDistribusiPage() {
         series: [{ type: 'bar', data: data.map(d => d.value).reverse(), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, colorStops), borderRadius: [0, 6, 6, 0] }, barWidth: '45%', label: { show: true, position: 'right', formatter: '{c}', fontWeight: '700', fontSize: 10 } }]
     });
 
-    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3"><Loader2 size={24} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Memuat Peta Spasial...</span></div>;
+    if (isLoading) return <div className="w-full h-full flex flex-col items-center justify-center text-[#6A7BFA] gap-4"><Loader2 size={36} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Memuat Peta Spasial...</span></div>;
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8 relative">
@@ -137,8 +190,16 @@ export default function PetaDistribusiPage() {
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] relative flex flex-col p-4 min-h-[500px]">
                     <div className="absolute top-8 left-8 z-10 flex items-center gap-2 bg-white/90 px-5 py-3 rounded-[20px] shadow-lg text-sm font-bold border border-slate-200"><MapPin size={18} className="text-[#4f46e5]" /> {selectedProvince.toUpperCase()}</div>
-                    <div className="w-full h-full min-h-[500px] bg-[#F8FAFC] rounded-[32px] overflow-hidden">
-                        <ReactECharts ref={echartsRef} option={mainMapOption} style={{ height: '100%', width: '100%' }} onEvents={{ 'click': (p: any) => p.name && triggerDataUpdate(p.name) }} />
+
+                    <div className="w-full h-full min-h-[500px] bg-[#F8FAFC] rounded-[32px] overflow-hidden flex items-center justify-center">
+                        {isMapLoaded ? (
+                            <ReactECharts ref={echartsRef} option={mainMapOption} style={{ height: '100%', width: '100%' }} onEvents={{ 'click': (p: any) => p.name && triggerDataUpdate(p.name) }} />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center text-slate-400 font-semibold text-sm gap-3">
+                                <Loader2 size={32} className="animate-spin text-[#6A7BFA]" />
+                                <span className="text-slate-500">Menyinkronkan Peta Interaktif...</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -147,7 +208,6 @@ export default function PetaDistribusiPage() {
 
                     <div className="bg-slate-50 p-5 rounded-[24px] flex justify-between items-center mb-6">
                         <div><p className="text-[11px] font-bold text-slate-500 uppercase">Total Volume Wilayah</p><h3 className="text-2xl font-black">{mapAnalytics?.totalVolume?.toLocaleString('id-ID') || 0} <span className="text-sm text-slate-500 font-semibold">Unit</span></h3></div>
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${mapAnalytics?.trend >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>{mapAnalytics?.trend >= 0 ? '+' : ''}{mapAnalytics?.trend}%</span>
                     </div>
 
                     <div className="flex p-1.5 bg-slate-50 border border-slate-200 rounded-[20px] shrink-0 mb-4">
