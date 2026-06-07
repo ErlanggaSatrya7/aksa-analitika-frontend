@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest) {
     try {
-        // Ambil ID File (Upload ID) dari URL URL
+        // Ambil ID File (Upload ID) dari parameter URL
         const { searchParams } = new URL(req.url);
         const uploadId = searchParams.get('uploadId');
 
@@ -18,10 +18,10 @@ export async function GET(req: NextRequest) {
             },
             take: 10,
             orderBy: {
-                rowId: 'asc' // <-- KUNCI UTAMA: Urutkan dari baris pertama (terkecil) ke bawah
+                rowId: 'asc' // KUNCI UTAMA: Urutkan dari baris pertama (terkecil) ke bawah
             },
             include: {
-                retailer: true // Sertakan relasi data toko
+                retailer: true // Sertakan relasi data master toko
             }
         });
 

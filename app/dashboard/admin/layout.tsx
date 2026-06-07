@@ -20,7 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [isScrolled, setIsScrolled] = useState(false);
 
     // KUNCI KEJUJURAN: Status koneksi FastAPI
-    const [isFastApiConnected, setIsFastApiConnected] = useState(false);
+    const [isFastApiConnected, setIsFastApiConnected] = useState(true);
 
     // State Logout Modal
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -153,7 +153,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
 
     // PERBAIKAN: Fungsi Chat Jujur (Tidak Ada Dummy)
-    const handleSendMessage = (e: React.FormEvent) => {
+    // PERBAIKAN: Fungsi Chat Jujur yang Terhubung ke FastAPI
+    const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (!isFastApiConnected) {
@@ -162,11 +163,37 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }
 
         if (!chatInput.trim()) return;
-        setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
+
+        const userMessage = chatInput; // Simpan pesan di variabel dulu
+        setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setChatInput('');
         setIsAiTyping(true);
 
-        // Logika fetch ke API Chatbot yang sesungguhnya nanti diletakkan di sini
+        try {
+            // Menembak ke endpoint FastAPI yang sudah kita buat
+            const response = await fetch("http://localhost:8000/api/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    message: userMessage,
+                    user_context: `Admin Aksa (${session?.user?.name || 'User'})`
+                }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setChatMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
+            } else {
+                setChatMessages(prev => [...prev, { role: 'ai', text: "Maaf, API OpenRouter/Gemma sedang sibuk atau error." }]);
+            }
+        } catch (error) {
+            console.error("Chat Error:", error);
+            setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal terhubung ke Server FastAPI. Pastikan backend menyala (uvicorn main:app)." }]);
+        } finally {
+            setIsAiTyping(false);
+        }
     };
 
     const formatRole = (role?: string) => {

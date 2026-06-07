@@ -2,40 +2,48 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react'; // IMPORT SESI DAN SIGNOUT
+import { useSession, signOut } from 'next-auth/react';
 import {
     CloudUpload, History, LogOut, Database, Menu, X,
     LayoutDashboard, User, Settings, BellRing, ShieldCheck,
-    AlertTriangle, FolderOpen, CheckCircle2, Bot, Send
+    AlertTriangle, FolderOpen, CheckCircle2, Bot, Send, Activity, ServerCrash
 } from 'lucide-react';
 
 export default function DataEngineerLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
 
-    // --- PENGAMBILAN DATA SESI DINAMIS ---
     const { data: session } = useSession();
     const user = session?.user as any;
     const userName = user?.name || 'Data Engineer';
-    const firstName = userName.split(' ')[0]; // Ambil nama depan untuk sapaan header
+    const firstName = userName.split(' ')[0];
     const avatarSeed = user?.email || 'data-engineer';
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
-
-    // State Logout Modal
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-    // State Chatbot
+    // --- STATE POP-UP DIAGNOSTIK SISTEM ---
+    const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
+    const [systemStatus, setSystemStatus] = useState({
+        fastApi: 'checking', // checking | online | offline
+        supabase: 'checking' // checking | online | offline
+    });
+
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isAiTyping, setIsAiTyping] = useState(false);
-    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
 
+    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
     const [currentDate, setCurrentDate] = useState('Memuat...');
     const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
+
+    const showToast = (message: string, type: 'success' | 'warning') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
 
     useEffect(() => {
         const now = new Date();
@@ -48,41 +56,140 @@ export default function DataEngineerLayout({ children }: { children: React.React
         else if (hour >= 15 && hour < 18) setGreeting('Selamat Sore');
         else setGreeting('Selamat Malam');
 
-        // LOKASI DINAMIS DARI DATA USER
         setCurrentLocation(user?.assignedCity ? `${user.assignedCity}, ID` : 'HQ Pusat, ID');
     }, [user?.assignedCity]);
 
-    // FUNGSI LOGOUT YANG BENAR (MENGHAPUS SESI NEXT-AUTH)
+    // --- LOGIKA DIAGNOSTIK INFRASTRUKTUR ---
+    useEffect(() => {
+        const runSystemDiagnostic = async () => {
+            setIsSystemModalOpen(true);
+            let apiState = 'offline';
+            let dbState = 'offline';
+
+            try {
+                const resApi = await fetch('http://localhost:8000/api/health');
+                if (resApi.ok) apiState = 'online';
+            } catch (error) {
+                apiState = 'offline';
+            }
+
+            try {
+                const resDb = await fetch('/api/data-engineer/dashboard');
+                if (resDb.ok) dbState = 'online';
+            } catch (error) {
+                dbState = 'offline';
+            }
+
+            setSystemStatus({ fastApi: apiState, supabase: dbState });
+        };
+        runSystemDiagnostic();
+    }, []);
+
     const handleLogout = async () => {
         await signOut({ callbackUrl: '/' });
     };
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
-    const showToast = (message: string, type: 'success' | 'warning') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 3000);
-    };
-
-    const handleSendMessage = (e: React.FormEvent) => {
+    // --- LOGIKA AI CHATBOT (SEKARANG SUDAH AKTIF!) ---
+    const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!chatInput.trim()) return;
-        setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
+
+        const userMessage = chatInput;
+        setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setChatInput('');
         setIsAiTyping(true);
-        setTimeout(() => {
-            setChatMessages(prev => [...prev, { role: 'ai', text: "Semua pipeline data berjalan normal. Tidak ada anomali pada database pusat hari ini." }]);
+
+        try {
+            // Memanggil API AI yang ada di main.py kamu
+            const response = await fetch('http://localhost:8000/api/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: userMessage,
+                    user_context: `Lead Data Engineer. Jawab dengan ringkas dan profesional terkait MLOps.`
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setChatMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
+            } else {
+                setChatMessages(prev => [...prev, { role: 'ai', text: "⚠️ Maaf, gagal memproses respons AI (Error 500)." }]);
+            }
+        } catch (error) {
+            setChatMessages(prev => [...prev, { role: 'ai', text: "❌ Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
+        } finally {
             setIsAiTyping(false);
-        }, 1500);
+        }
     };
+
+    // --- VARIABEL STATUS UNTUK TOP BAR ---
+    const isSystemOnline = systemStatus.fastApi === 'online' && systemStatus.supabase === 'online';
+    const isSystemChecking = systemStatus.fastApi === 'checking' || systemStatus.supabase === 'checking';
 
     return (
         <div className="flex h-[100dvh] w-full bg-[#F4F7FE] overflow-hidden font-sans text-slate-600 relative">
 
+            {/* --- TOAST NOTIFICATION UI --- */}
             {toast && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[100] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[100] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertTriangle size={20} className="shrink-0" />}
                     <p className="leading-tight">{toast.message}</p>
+                </div>
+            )}
+
+            {/* --- POP-UP MODAL DIAGNOSTIK SISTEM --- */}
+            {isSystemModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[130] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center border border-slate-100">
+                        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-sm border border-indigo-100">
+                            <ShieldCheck size={32} />
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight text-center">Diagnostik Sistem</h3>
+                        <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed text-center">
+                            Memeriksa konektivitas infrastruktur sebelum Anda memulai tugas Data Engineering.
+                        </p>
+
+                        <div className="w-full space-y-4 mb-8">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Activity size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">AI Engine (FastAPI)</span>
+                                </div>
+                                {systemStatus.fastApi === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.fastApi === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><ServerCrash size={12} /> Offline</span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Database size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">Database (Supabase)</span>
+                                </div>
+                                {systemStatus.supabase === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.supabase === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><AlertTriangle size={12} /> Offline</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setIsSystemModalOpen(false)}
+                            disabled={isSystemChecking}
+                            className="w-full py-4 px-4 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white font-bold text-sm rounded-[24px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                        >
+                            {isSystemChecking ? 'Menunggu Hasil...' : 'Mengerti & Lanjutkan'}
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -115,17 +222,12 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
-            {/* SIDEBAR DENGAN ROUNDED PREMIUM */}
+            {/* SIDEBAR */}
             <aside className={`fixed lg:relative top-0 left-0 h-[100dvh] w-[280px] bg-[#ffffff] flex flex-col py-6 px-5 z-[100] rounded-r-[32px] lg:rounded-none lg:rounded-br-[40px] lg:border-r lg:border-slate-100 shadow-[20px_0_40px_rgba(0,0,0,0.1)] lg:shadow-none transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex items-center justify-between mb-8 px-3 shrink-0">
                     <div className="flex items-center gap-3">
-                        <img
-                            src="/Logo-AksaAnalitika-BgWhite.png"
-                            alt="AKSA Analitika"
-                            className="h-14 lg:h-16 w-auto object-contain"
-                        />
+                        <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA Analitika" className="h-14 lg:h-16 w-auto object-contain" />
                     </div>
-                    {/* Tombol Close Sidebar Mobile */}
                     <button className="lg:hidden p-2 text-slate-400 hover:text-[#6A7BFA] hover:bg-slate-50 rounded-full transition-all active:scale-90" onClick={() => setIsMobileMenuOpen(false)}>
                         <X size={20} strokeWidth={2.5} />
                     </button>
@@ -160,10 +262,8 @@ export default function DataEngineerLayout({ children }: { children: React.React
                     <Link href="/dashboard/data-engineer/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                            {/* AVATAR DINAMIS */}
                             <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
                             <div className="overflow-hidden">
-                                {/* NAMA DINAMIS */}
                                 <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#6A7BFA] ${pathname.includes('/profile') ? 'text-[#6A7BFA]' : 'text-slate-900'}`}>
                                     {userName}
                                 </p>
@@ -178,44 +278,40 @@ export default function DataEngineerLayout({ children }: { children: React.React
             {/* MAIN CONTENT AREA */}
             <div className="flex-1 h-full overflow-y-auto relative custom-scrollbar bg-[#F4F7FE]" onScroll={handleScroll}>
 
-                {/* HEADER (DYNAMIC MOBILE & DESKTOP) */}
+                {/* HEADER */}
                 <header className={`sticky top-0 z-[70] w-full transition-all duration-300 rounded-b-[32px] lg:rounded-b-none lg:rounded-br-[40px] ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)]' : 'bg-white/80 backdrop-blur-md border-b border-slate-200/50'}`}>
-
-                    {/* KHUSUS MOBILE HEADER */}
                     <div className="flex lg:hidden items-center justify-between px-4 sm:px-6 h-[72px]">
                         <button className="w-10 h-10 flex items-center justify-center bg-white border border-slate-100 shadow-sm text-slate-700 hover:text-[#6A7BFA] hover:bg-[#EDF2FE] hover:border-[#EDF2FE] rounded-2xl transition-all active:scale-95" onClick={() => setIsMobileMenuOpen(true)}>
                             <Menu size={22} strokeWidth={2.5} />
                         </button>
-
-                        <img
-                            src="/Logo-AksaAnalitika-BgWhite.png"
-                            alt="AKSA Analitika"
-                            className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm"
-                        />
-
-                        {/* Profil Kanan Mulus Mobile (AVATAR DINAMIS) */}
+                        <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA Analitika" className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm" />
                         <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 shadow-sm bg-slate-50 active:scale-90 transition-all cursor-pointer">
                             <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-full h-full object-cover" />
                         </div>
                     </div>
-
-                    {/* KHUSUS DESKTOP HEADER */}
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
-                            {/* NAMA SAPAAN DINAMIS */}
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
                                 {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
                             </h2>
                             <p className="text-xs font-medium text-slate-500 mt-1">Pusat Ingesti Data & Pipeline ETL</p>
                         </div>
-
                         <div className="flex items-center gap-6">
                             <div className="text-right border-r border-slate-200 pr-6">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{currentDate}</p>
                                 <p className="text-xs font-semibold text-slate-600">{currentLocation}</p>
                             </div>
-                            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 text-emerald-700 px-4 py-2 rounded-full text-xs font-bold shadow-sm cursor-help">
-                                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> DB Terhubung
+
+                            {/* --- INDIKATOR STATUS SISTEM DINAMIS --- */}
+                            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm cursor-help transition-all duration-300 ${isSystemChecking ? 'bg-amber-50 border border-amber-100 text-amber-700' :
+                                isSystemOnline ? 'bg-emerald-50 border border-emerald-100 text-emerald-700' :
+                                    'bg-red-50 border border-red-100 text-red-700'
+                                }`}>
+                                <span className={`w-2 h-2 rounded-full ${isSystemChecking ? 'bg-amber-500 animate-pulse' :
+                                    isSystemOnline ? 'bg-emerald-500 animate-pulse' :
+                                        'bg-red-500'
+                                    }`}></span>
+                                {isSystemChecking ? 'Memeriksa Sistem...' : isSystemOnline ? 'Sistem Optimal' : 'Koneksi Terputus'}
                             </div>
                         </div>
                     </div>
@@ -237,9 +333,9 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar">
-                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
-                                    Status server optimal. Ada log error yang ingin Anda periksa hari ini?
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar flex flex-col">
+                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium self-start">
+                                    Status server terhubung. Ada yang bisa saya bantu hari ini, {firstName}?
                                 </div>
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
@@ -264,7 +360,7 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                     type="text"
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
-                                    placeholder="Cek status database..."
+                                    placeholder="Tanya Gemma AI..."
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 text-sm font-medium transition-all"
                                 />
                                 <button type="submit" disabled={isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95">
@@ -286,4 +382,4 @@ export default function DataEngineerLayout({ children }: { children: React.React
             `}} />
         </div>
     );
-}   
+}

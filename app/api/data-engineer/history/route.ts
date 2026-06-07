@@ -3,14 +3,15 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-// MENGAMBIL HISTORY
+// MENGAMBIL HISTORY DARI TABEL UTAMA MLOPS
 export async function GET() {
     try {
-        const logs = await prisma.audit_logs.findMany({
-            orderBy: { createdAt: 'desc' }
+        const logs = await prisma.system_history.findMany({
+            orderBy: { created_at: 'desc' } // Pastikan schema kamu menggunakan created_at
         });
         return NextResponse.json({ logs }, { status: 200 });
     } catch (error) {
+        console.error("Gagal get history:", error);
         return NextResponse.json({ error: "Gagal memuat history" }, { status: 500 });
     }
 }
@@ -22,12 +23,13 @@ export async function DELETE(req: NextRequest) {
         const { ids } = body;
 
         if (ids && ids.length > 0) {
-            await prisma.audit_logs.deleteMany({ where: { id: { in: ids } } });
+            await prisma.system_history.deleteMany({ where: { id: { in: ids } } });
         } else {
-            await prisma.audit_logs.deleteMany({}); // Hapus semua jika array kosong
+            await prisma.system_history.deleteMany({}); // Hapus semua jika array kosong
         }
         return NextResponse.json({ message: "History dihapus" }, { status: 200 });
     } catch (error) {
+        console.error("Gagal delete history:", error);
         return NextResponse.json({ error: "Gagal menghapus history" }, { status: 500 });
     }
 }

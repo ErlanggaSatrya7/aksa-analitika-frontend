@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Database, FolderOpen, Eye, Download, FileText, Calendar, HardDrive, X, FileSpreadsheet, Trash2, CloudUpload, AlertTriangle, Loader2, Search, Filter, Clock } from 'lucide-react';
+import { Database, FolderOpen, Eye, Download, FileText, Calendar, HardDrive, X, FileSpreadsheet, Trash2, CloudUpload, AlertTriangle, Loader2, Search, Filter, Clock, CheckCircle2, Sparkles } from 'lucide-react';
 
 export default function DatasetCatalogPage() {
     // State Logika UI
@@ -19,6 +19,14 @@ export default function DatasetCatalogPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 
+    // State Toast Notifikasi Lokal
+    const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+    const showToast = (message: string, type: 'success' | 'error') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
     // MENGAMBIL DAFTAR FILE DARI DATABASE
     useEffect(() => {
         const fetchFiles = async () => {
@@ -30,6 +38,7 @@ export default function DatasetCatalogPage() {
                 }
             } catch (error) {
                 console.error("Gagal mengambil daftar file:", error);
+                showToast("Gagal mengambil data dari server.", "error");
             } finally {
                 setIsLoading(false);
             }
@@ -48,10 +57,12 @@ export default function DatasetCatalogPage() {
                 setPreviewData(data.previewData || []);
             } else {
                 setPreviewData([]);
+                showToast("Gagal memuat preview data.", "error");
             }
         } catch (error) {
             console.error("Gagal mengambil preview data:", error);
             setPreviewData([]);
+            showToast("Terjadi kesalahan pada server saat memuat preview.", "error");
         } finally {
             setIsLoadingPreview(false);
         }
@@ -88,11 +99,13 @@ export default function DatasetCatalogPage() {
                 setRawFileList(prev => prev.filter(f => !idsToDelete.includes(f.id)));
                 setDeleteTargets([]);
                 setSelectedFileIds([]);
+                showToast(`${idsToDelete.length} File beserta data terkait berhasil dihapus!`, "success");
             } else {
-                alert("Gagal menghapus data dari server.");
+                showToast("Gagal menghapus data dari server.", "error");
             }
         } catch (error) {
             console.error("Error menghapus file:", error);
+            showToast("Terjadi kesalahan jaringan saat menghapus.", "error");
         } finally {
             setIsDeleting(false);
         }
@@ -101,10 +114,18 @@ export default function DatasetCatalogPage() {
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8 relative">
 
-            {/* POP-UP KONFIRMASI HAPUS (DESTUCTIVE MODAL) */}
+            {/* --- LOKAL TOAST NOTIFICATION --- */}
+            {toast && (
+                <div className={`fixed top-24 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-2xl flex items-center gap-3 z-[150] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                    {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertTriangle size={20} className="shrink-0" />}
+                    <p className="leading-tight">{toast.message}</p>
+                </div>
+            )}
+
+            {/* POP-UP KONFIRMASI HAPUS (DESTRUCTIVE MODAL) */}
             {deleteTargets.length > 0 && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl p-8 text-center animate-in zoom-in-95 slide-in-from-bottom-4 relative overflow-hidden">
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[40px] w-full max-w-md shadow-2xl p-8 text-center animate-in zoom-in-95 slide-in-from-bottom-4 relative overflow-hidden border border-slate-100">
                         <div className="absolute top-0 left-0 w-full h-2 bg-red-500"></div>
 
                         <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner border-4 border-white outline outline-1 outline-red-100">
@@ -124,10 +145,13 @@ export default function DatasetCatalogPage() {
                                     </span>
                                 ))}
                             </div>
-                            <p className="bg-amber-50 text-amber-800 p-4 rounded-2xl border border-amber-100 text-left">
-                                <strong className="font-bold block mb-1">⚠️ Peringatan Kritis (Cascade Delete):</strong>
-                                Menghapus file ini juga akan otomatis menghancurkan seluruh <strong>baris data penjualan</strong> yang terkait di Database (Tabel Sales Data). Tindakan ini tidak dapat dibatalkan.
-                            </p>
+                            <div className="bg-amber-50 text-amber-800 p-4 rounded-2xl border border-amber-100 text-left flex gap-3 items-start shadow-sm">
+                                <AlertTriangle size={20} className="shrink-0 mt-0.5 text-amber-600" />
+                                <div>
+                                    <strong className="font-bold block mb-1">Peringatan Kritis (Cascade Delete):</strong>
+                                    Menghapus file ini juga akan otomatis menghancurkan seluruh <strong>baris data penjualan</strong> yang terkait di Database. Tindakan ini tidak dapat dibatalkan.
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex gap-3 w-full">
@@ -142,17 +166,26 @@ export default function DatasetCatalogPage() {
                 </div>
             )}
 
-            {/* HEADER HALAMAN */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
-                <div>
-                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Arsip Dataset</h2>
-                    <p className="text-sm text-slate-500">Katalog file transaksi bulanan yang telah berhasil di-ingest ke sistem.</p>
+            {/* --- MINI HERO BANNER --- */}
+            <div className="bg-white rounded-[32px] p-8 lg:p-10 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+                <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-indigo-50 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
+                <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-3 bg-indigo-50 w-fit px-3 py-1.5 rounded-full border border-indigo-100">
+                        <Sparkles size={14} className="text-indigo-500" />
+                        <span className="text-xs font-bold tracking-wide uppercase text-indigo-600">Dataset Registry</span>
+                    </div>
+                    <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Arsip Dataset Historis</h2>
+                    <p className="text-sm text-slate-500 max-w-lg">
+                        Katalog direktori untuk seluruh file transaksi yang telah berhasil di-ingest ke dalam sistem. Anda dapat memantau, menghapus, atau melihat sampel data aktual.
+                    </p>
                 </div>
-                <Link href="/dashboard/data-engineer/upload">
-                    <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white font-bold text-sm rounded-[40px] hover:shadow-lg transition-all shadow-md active:scale-95">
-                        <CloudUpload size={18} /> Upload Data Baru
-                    </button>
-                </Link>
+                <div className="relative z-10 mt-6 md:mt-0">
+                    <Link href="/dashboard/data-engineer/upload">
+                        <button className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white font-bold text-sm rounded-[40px] hover:shadow-lg hover:shadow-indigo-500/30 transition-all active:scale-95">
+                            <CloudUpload size={18} /> Upload Data Baru
+                        </button>
+                    </Link>
+                </div>
             </div>
 
             {/* TABEL DAFTAR FILE ARSIP */}
@@ -233,7 +266,6 @@ export default function DatasetCatalogPage() {
                                                     <Calendar size={14} className="text-[#6A7BFA]" />
                                                     {new Date(file.uploadedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </div>
-                                                {/* MODIFIKASI: Menambahkan info Jam di sini */}
                                                 <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 pl-[22px] font-semibold">
                                                     <Clock size={10} />
                                                     {new Date(file.uploadedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
@@ -275,8 +307,8 @@ export default function DatasetCatalogPage() {
 
             {/* MODAL POP-UP PREVIEW DATA FULL 13 KOLOM */}
             {previewFile && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[40px] w-full max-w-[95vw] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[40px] w-full max-w-[95vw] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 flex flex-col max-h-[90vh] border border-slate-100">
                         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-[#EDF2FE] rounded-2xl text-[#4f46e5]"><FileSpreadsheet size={24} /></div>

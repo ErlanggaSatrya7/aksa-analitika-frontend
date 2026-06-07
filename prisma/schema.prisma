@@ -33,28 +33,31 @@ model retailers {
   users             users[]
 }
 
-// TABEL BARU: Untuk melacak riwayat upload file dataset
 model dataset_uploads {
-  id          String       @id @default(uuid())
-  fileName    String
-  fileSize    String?
-  totalRows   Int
-  uploadedBy  String       
-  uploadedAt  DateTime     @default(now()) @db.Timestamptz(6)
+  id             String           @id @default(uuid())
+  fileName       String
+  fileSize       String?
+  totalRows      Int
+  uploadedBy     String
+  // 👇 Tambahan: Memastikan Archive UI tahu file ini valid atau gagal
+  status         String           @default("SUCCESS") 
+  uploadedAt     DateTime         @default(now()) @db.Timestamptz(6)
   
-  sales_data  sales_data[] 
+  sales_data     sales_data[]
+  // 👇 Tambahan: Relasi balik dari system_history
+  system_history system_history[] 
 }
 
 model sales_data {
-  id              String   @id @default(uuid())
-  rowId           Int      @default(autoincrement()) // <-- TAMBAHKAN BARIS INI
+  id              String           @id @default(dbgenerated("gen_random_uuid()"))
   retailerId      String
+  invoiceDate     DateTime         @db.Timestamptz(6)
   
-  // TAMBAHAN: Relasi ke tabel upload file
-  uploadId        String?  
-  dataset_upload  dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
-
-  invoiceDate     DateTime @db.Timestamptz(6)
+  // 👇 Tambahan: Snapshot lokasi statis untuk kebutuhan BI/Analitik
+  region          String           
+  state           String           
+  city            String           
+  
   product         String
   pricePerUnit    Float
   unitsSold       Int
@@ -62,11 +65,17 @@ model sales_data {
   operatingProfit Float
   operatingMargin Float
   salesMethod     String
-  retailer        retailers @relation(fields: [retailerId], references: [id])
+  uploadId        String?
+  rowId           Int              @default(autoincrement())
+  
+  retailer        retailers        @relation(fields: [retailerId], references: [id])
+  dataset_upload  dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 
   @@index([invoiceDate])
   @@index([retailerId])
-  @@index([uploadId]) // Index tambahan agar proses hapus data massal sangat cepat
+  @@index([uploadId])
+  // 👇 Tambahan: Index komposit untuk mempercepat filter geospasial
+  @@index([region, state, city]) 
 }
 
 model logistic_requests {
@@ -89,12 +98,19 @@ model notifications {
   user        users    @relation(fields: [userId], references: [id])
 }
 
-model audit_logs {
-  id        String   @id @default(uuid())
-  action    String   // Akan berisi "UPLOAD" atau "DELETE"
-  fileName  String
-  totalRows Int      @default(0)
-  createdAt DateTime @default(now())
+model system_history {
+  id          String           @id @default(dbgenerated("gen_random_uuid()"))
+  action      String
+  fileName    String
+  totalRows   Int              @default(0)
+  status      String?
+  notes       String?
+  
+  // 👇 Tambahan: Mengikat History ke Dataset Archive
+  uploadId    String?          
+  dataset     dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  
+  created_at  DateTime         @default(now()) @db.Timestamptz(6)
 }
 
 enum Role {
