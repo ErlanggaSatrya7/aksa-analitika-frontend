@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import * as echarts from 'echarts';
 import ReactECharts from 'echarts-for-react';
-import { ShoppingCart, Package, Percent, TrendingUp, TrendingDown, Map as MapIcon, Loader2, ArrowRight, PackageSearch, Store, BarChart3, Globe, Activity, LayoutList } from 'lucide-react';
+import { ShoppingCart, Package, Percent, Map as MapIcon, Loader2, ArrowRight, PackageSearch, Store, BarChart3, Globe, Activity, LayoutList, BrainCircuit, ServerCrash } from 'lucide-react';
 import Link from 'next/link';
 
 export default function RingkasanNasional() {
@@ -13,6 +13,10 @@ export default function RingkasanNasional() {
     const [activeTrendTab, setActiveTrendTab] = useState<'trend' | 'channel'>('trend');
     const [activePortoTab, setActivePortoTab] = useState<'produk' | 'retailer'>('produk');
     const [dashboardData, setDashboardData] = useState<any>(null);
+
+    // STATE KONEKSI AI & DATABASE
+    const [fastApiStatus, setFastApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+    const [dbLatency, setDbLatency] = useState<number>(0);
 
     useEffect(() => {
         // Fungsi khusus untuk mengambil GeoJSON dengan aman
@@ -29,15 +33,31 @@ export default function RingkasanNasional() {
         };
 
         const fetchDashboardData = async () => {
+            const startTime = performance.now();
             try {
                 const res = await fetch('/api/admin/analytics/dashboard');
-                return await res.json();
+                const data = await res.json();
+                const endTime = performance.now();
+                setDbLatency(Math.round(endTime - startTime));
+                return data;
             } catch (error) {
                 console.error("Gagal memuat data dashboard:", error);
                 return null;
             }
         };
 
+        // Fungsi cek mesin AI (Gemma & RF)
+        const checkSystemHealth = async () => {
+            try {
+                const res = await fetch('http://localhost:8000/api/health');
+                if (res.ok) setFastApiStatus('online');
+                else setFastApiStatus('offline');
+            } catch {
+                setFastApiStatus('offline');
+            }
+        };
+
+        // Eksekusi janji paralel
         Promise.all([fetchMapData(), fetchDashboardData()])
             .then(([mapData, dbData]) => {
                 // 1. DAFTARKAN PETA (Hanya jika file GeoJSON valid)
@@ -76,6 +96,11 @@ export default function RingkasanNasional() {
                 setDashboardData(dbData);
                 setIsLoading(false);
             });
+
+        // Cek status AI langsung & pasang interval
+        checkSystemHealth();
+        const interval = setInterval(checkSystemHealth, 15000); // Polling setiap 15 detik
+        return () => clearInterval(interval);
     }, []);
 
     const mapDataFormatted = dashboardData?.mapDistribution?.map((d: any) => ({
@@ -100,12 +125,100 @@ export default function RingkasanNasional() {
         }]
     };
 
+    // ==========================================
+    // UPDATE: GRAFIK TREND BULANAN LEBIH TEGAS & JELAS
+    // ==========================================
     const trendChartOption = {
-        tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E2E8F0' },
-        grid: { left: '2%', right: '4%', bottom: '5%', top: '10%', containLabel: true },
-        xAxis: { type: 'category', boundaryGap: false, data: dashboardData?.trendLine?.labels || ['Jan', 'Feb', 'Mar'], axisLine: { lineStyle: { color: '#E2E8F0' } } },
-        yAxis: { type: 'value', axisLabel: { formatter: '{value}' }, splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } } },
-        series: [{ name: 'Total Unit', type: 'line', smooth: true, symbolSize: 8, itemStyle: { color: '#4f46e5' }, lineStyle: { width: 4 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(106, 123, 250, 0.4)' }, { offset: 1, color: 'rgba(79, 70, 229, 0)' }] } }, data: dashboardData?.trendLine?.values || [] }]
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            padding: [12, 16],
+            textStyle: { color: '#0F172A', fontSize: 13 },
+            axisPointer: {
+                type: 'line',
+                lineStyle: { color: '#CBD5E1', width: 1, type: 'dashed' }
+            },
+            formatter: (params: any) => {
+                const val = params[0].value ? params[0].value.toLocaleString('id-ID') : 0;
+                return `
+                    <div style="font-weight:700; margin-bottom:6px; color:#64748B; font-size:12px;">${params[0].name}</div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:#4f46e5;"></span>
+                        <span style="font-weight:800; color:#0F172A; font-size:15px;">${val} <span style="font-weight:500; color:#64748B; font-size:13px;">Unit</span></span>
+                    </div>
+                `;
+            }
+        },
+        grid: { left: '2%', right: '5%', bottom: '5%', top: '15%', containLabel: true },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: dashboardData?.trendLine?.labels || [],
+            axisLine: { lineStyle: { color: '#E2E8F0' } },
+            axisLabel: { color: '#64748B', fontWeight: '600', margin: 12 },
+            axisTick: { show: false }
+        },
+        yAxis: {
+            type: 'value',
+            axisLabel: {
+                color: '#94A3B8',
+                fontWeight: '500',
+                formatter: (value: number) => {
+                    if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                    if (value >= 1000) return (value / 1000).toFixed(0) + 'k';
+                    return value;
+                }
+            },
+            splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } }
+        },
+        series: [{
+            name: 'Total Unit',
+            type: 'line',
+            smooth: 0.4,
+            symbol: 'circle',
+            symbolSize: 8, // Ukuran titik
+            showSymbol: true, // TITIK SEKARANG SELALU MUNCUL (TIDAK PERLU HOVER)
+            label: {
+                show: true, // LABEL ANGKA SELALU TAMPIL
+                position: 'top',
+                color: '#4f46e5',
+                fontWeight: 'bold',
+                fontSize: 11,
+                formatter: (params: any) => {
+                    let val = params.value;
+                    if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+                    if (val >= 1000) return (val / 1000).toFixed(0) + 'k';
+                    return val;
+                }
+            },
+            itemStyle: {
+                color: '#ffffff', // Warna dalam titik putih
+                borderColor: '#4f46e5', // Warna garis pinggir titik biru
+                borderWidth: 2,
+                shadowColor: 'rgba(79, 70, 229, 0.4)',
+                shadowBlur: 4
+            },
+            lineStyle: {
+                width: 4,
+                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                    { offset: 0, color: '#A3B1FF' },
+                    { offset: 1, color: '#4f46e5' }
+                ]),
+                shadowColor: 'rgba(79, 70, 229, 0.3)',
+                shadowBlur: 8,
+                shadowOffsetY: 6
+            },
+            areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    { offset: 0, color: 'rgba(79, 70, 229, 0.4)' },
+                    { offset: 0.8, color: 'rgba(79, 70, 229, 0.05)' },
+                    { offset: 1, color: 'rgba(79, 70, 229, 0)' }
+                ])
+            },
+            data: dashboardData?.trendLine?.values || []
+        }]
     };
 
     const channelChartOption = {
@@ -125,15 +238,49 @@ export default function RingkasanNasional() {
     };
 
     const retailerChartOption = {
-        tooltip: { trigger: 'item', formatter: '<div style="font-weight:bold; margin-bottom:4px;">{b}</div><div style="color:#6A7BFA; font-weight:bold;">{c} Unit ({d}%)</div>', backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E2E8F0', padding: [10, 14] },
-        legend: { bottom: '0%', left: 'center', icon: 'circle', itemGap: 20, textStyle: { color: '#475569', fontWeight: '500', fontSize: 12 } },
-        series: [{ name: 'Retailer', type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'], avoidLabelOverlap: false, itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 }, label: { show: false }, data: dashboardData?.retailerShare || [] }]
+        tooltip: {
+            trigger: 'item',
+            formatter: '<div style="font-weight:bold; margin-bottom:4px;">{b}</div><div style="color:#6A7BFA; font-weight:bold;">{c} Unit ({d}%)</div>',
+            backgroundColor: '#ffffff',
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            padding: [10, 14]
+        },
+        legend: {
+            type: 'scroll',
+            bottom: '0%',
+            left: 'center',
+            icon: 'circle',
+            itemGap: 15,
+            textStyle: { color: '#475569', fontWeight: '500', fontSize: 11 }
+        },
+        series: [{
+            name: 'Retailer',
+            type: 'pie',
+            radius: ['35%', '60%'],
+            center: ['50%', '42%'],
+            avoidLabelOverlap: true,
+            itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 },
+            label: {
+                show: true,
+                formatter: '{b}\n{d}%',
+                fontWeight: 'bold',
+                fontSize: 10,
+                color: '#475569'
+            },
+            labelLine: { show: true, length: 10, length2: 10 },
+            data: dashboardData?.retailerShare?.map((d: any) => ({
+                name: d.name || d.retailer || 'Unknown Retailer',
+                value: d.value || d.units || d.total || 0
+            })) || []
+        }]
     };
 
     if (isLoading) return <div className="w-full h-[80vh] flex flex-col items-center justify-center text-[#6A7BFA] gap-4"><Loader2 size={36} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Memuat Database Nasional...</span></div>;
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
+            {/* HERO SECTION */}
             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] rounded-[40px] p-8 lg:p-12 relative overflow-hidden flex flex-col md:flex-row items-center justify-between shadow-[0_20px_50px_-15px_rgba(79,70,229,0.4)] animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out group">
                 <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-white/10 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none transition-transform duration-1000" />
                 <div className="relative z-10 max-w-3xl text-white">
@@ -144,7 +291,10 @@ export default function RingkasanNasional() {
                 <div className="hidden lg:block w-[320px] h-[260px] relative z-10 mr-4 animate-float"><img src="/ilustrasi-superAdmin-nobg-fix.png" alt="Illustration" className="w-full h-full object-contain drop-shadow-2xl scale-125" /></div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 4 KARTU METRIK & STATUS AI */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+
+                {/* Kartu 1: Total Penjualan */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><ShoppingCart size={24} /></div>
@@ -155,6 +305,7 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
+                {/* Kartu 2: Margin */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Percent size={24} /></div>
@@ -165,6 +316,7 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
+                {/* Kartu 3: Total Pendapatan */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Package size={24} /></div>
@@ -174,8 +326,30 @@ export default function RingkasanNasional() {
                         <h3 className="text-3xl lg:text-4xl font-bold text-slate-900 tracking-tight">{(dashboardData?.summary?.totalSales / 1000000000).toFixed(1) || 0} <span className="text-lg lg:text-xl text-slate-400 font-medium capitalize">Miliar</span></h3>
                     </div>
                 </div>
+
+                {/* Kartu 4: Status Gemma AI & Server */}
+                <div className={`bg-white rounded-[32px] p-6 lg:p-8 border shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 group/card ${fastApiStatus === 'online' ? 'hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] border-slate-100' : 'hover:shadow-[0_20px_40px_-15px_rgba(239,68,68,0.2)] border-red-100'}`}>
+                    <div className="flex justify-between items-start mb-6">
+                        <div className={`p-3.5 rounded-2xl transition-colors ${fastApiStatus === 'checking' ? 'bg-slate-100 text-slate-400' : fastApiStatus === 'online' ? 'bg-emerald-50 text-emerald-600 group-hover/card:bg-emerald-500 group-hover/card:text-white' : 'bg-red-50 text-red-500 group-hover/card:bg-red-500 group-hover/card:text-white'}`}>
+                            {fastApiStatus === 'offline' ? <ServerCrash size={24} /> : <BrainCircuit size={24} />}
+                        </div>
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${fastApiStatus === 'checking' ? 'bg-slate-50 text-slate-500' : fastApiStatus === 'online' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-red-50 border-red-200 text-red-600 animate-pulse'}`}>
+                            {fastApiStatus === 'checking' ? 'Checking' : fastApiStatus === 'online' ? <><Activity size={10} /> {dbLatency}ms</> : 'Terputus'}
+                        </span>
+                    </div>
+                    <div>
+                        <p className={`text-[11px] lg:text-xs font-bold uppercase tracking-widest mb-1.5 transition-colors ${fastApiStatus === 'online' ? 'text-slate-500 group-hover/card:text-emerald-600' : 'text-red-500'}`}>
+                            Gemma AI & MLOps
+                        </p>
+                        <h3 className={`text-3xl lg:text-4xl font-bold tracking-tight ${fastApiStatus === 'checking' ? 'text-slate-400' : fastApiStatus === 'online' ? 'text-slate-900' : 'text-red-600'}`}>
+                            {fastApiStatus === 'checking' ? '...' : fastApiStatus === 'online' ? 'Online' : 'Offline'}
+                        </h3>
+                    </div>
+                </div>
+
             </div>
 
+            {/* MAP & PERFORMA REGIONAL */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="lg:col-span-3 bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col relative overflow-hidden group">
                     <div className="flex items-center gap-3 mb-6 px-2 relative z-10">
@@ -212,6 +386,7 @@ export default function RingkasanNasional() {
                 </div>
             </div>
 
+            {/* CHART ANALYTICS */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-300">
                 <div className="bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col h-[480px]">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-2">

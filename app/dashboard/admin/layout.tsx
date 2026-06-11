@@ -6,46 +6,52 @@ import { useSession, signOut } from 'next-auth/react';
 import {
     BarChart3, Map as MapIcon, TrendingUp, Users, LogOut, ShieldCheck,
     Download, Bot, X, Send, AlertTriangle, CheckCircle2, Menu, Settings,
-    Inbox, Bell, BrainCircuit, ServerOff
+    Inbox, Bell, BrainCircuit, ServerCrash, Activity, Database
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
 
-    // MENGAMBIL DATA SESI DINAMIS DARI NEXTAUTH
     const { data: session } = useSession();
+    const user = session?.user as any;
+    const userName = user?.name || 'Admin';
+    const firstName = userName.split(' ')[0];
+    const avatarSeed = user?.email || 'admin-user';
+    const userRole = user?.role;
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
-
-    // KUNCI KEJUJURAN: Status koneksi FastAPI
-    const [isFastApiConnected, setIsFastApiConnected] = useState(true);
-
-    // State Logout Modal
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-    // State Notifications
+    // --- STATE POP-UP DIAGNOSTIK SISTEM ---
+    const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
+    const [systemStatus, setSystemStatus] = useState({
+        fastApi: 'checking', // checking | online | offline
+        supabase: 'checking' // checking | online | offline
+    });
+
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const notifRef = useRef<HTMLDivElement>(null);
-
-    // STATE DATA DINAMIS NOTIFIKASI DARI DATABASE
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // State Chatbot
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isAiTyping, setIsAiTyping] = useState(false);
-    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
 
-    // State Topbar Dinamis
+    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
     const [currentDate, setCurrentDate] = useState('Memuat...');
     const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
 
-    // MENGAMBIL NOTIFIKASI DARI DATABASE BERDASARKAN EMAIL LOGIN
+    const showToast = (message: string, type: 'success' | 'warning') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
+    // --- FETCH NOTIFIKASI ---
     const fetchNotifications = async () => {
         if (!session?.user?.email) return;
         try {
@@ -68,7 +74,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }
     }, [session?.user?.email]);
 
-    // FUNGSI TANDAI DIBACA SEMUA
     const markAllAsRead = async () => {
         if (!session?.user?.email || unreadCount === 0) return;
         try {
@@ -94,10 +99,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         const diffHours = Math.round(diffMins / 60);
         const diffDays = Math.round(diffHours / 24);
 
-        if (diffMins < 60) return `${diffMins} Menit yang lalu`;
-        if (diffHours < 24) return `${diffHours} Jam yang lalu`;
+        if (diffMins < 60) return `${diffMins} Menit`;
+        if (diffHours < 24) return `${diffHours} Jam`;
         if (diffDays === 1) return `Kemarin`;
-        return `${diffDays} Hari yang lalu`;
+        return `${diffDays} Hari`;
     };
 
     const getNotifStyle = (title: string) => {
@@ -122,13 +127,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         else if (hour >= 15 && hour < 18) setGreeting('Selamat Sore');
         else setGreeting('Selamat Malam');
 
-        let location = 'Pusat Operasional, ID';
-        try {
-            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (tz.includes('Makassar') || tz.includes('Singapore')) location = 'Makassar, ID';
-            if (tz.includes('Jayapura')) location = 'Jayapura, ID';
-        } catch (e) { }
-        setCurrentLocation(location);
+        setCurrentLocation(user?.assignedCity ? `${user.assignedCity}, ID` : 'HQ Pusat, ID');
+    }, [user?.assignedCity]);
+
+    // --- LOGIKA DIAGNOSTIK INFRASTRUKTUR (POP-UP AWAL) ---
+    useEffect(() => {
+        const runSystemDiagnostic = async () => {
+            setIsSystemModalOpen(true);
+            let apiState = 'offline';
+            let dbState = 'offline';
+
+            try {
+                const resApi = await fetch('http://localhost:8000/api/health');
+                if (resApi.ok) apiState = 'online';
+            } catch (error) {
+                apiState = 'offline';
+            }
+
+            try {
+                const resDb = await fetch('/api/admin/analytics/dashboard');
+                if (resDb.ok) dbState = 'online';
+            } catch (error) {
+                dbState = 'offline';
+            }
+
+            setSystemStatus({ fastApi: apiState, supabase: dbState });
+        };
+        runSystemDiagnostic();
     }, []);
 
     useEffect(() => {
@@ -147,78 +172,117 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
-    const showToast = (message: string, type: 'success' | 'warning') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 3000);
-    };
-
-    // PERBAIKAN: Fungsi Chat Jujur (Tidak Ada Dummy)
-    // PERBAIKAN: Fungsi Chat Jujur yang Terhubung ke FastAPI
+    // --- LOGIKA AI CHATBOT FASTAPI ---
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        if (!isFastApiConnected) {
-            showToast("Server ML Offline: Tidak dapat memproses percakapan.", "warning");
-            return;
-        }
-
         if (!chatInput.trim()) return;
 
-        const userMessage = chatInput; // Simpan pesan di variabel dulu
+        const userMessage = chatInput;
         setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setChatInput('');
         setIsAiTyping(true);
 
         try {
-            // Menembak ke endpoint FastAPI yang sudah kita buat
-            const response = await fetch("http://localhost:8000/api/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+            const response = await fetch('http://localhost:8000/api/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: userMessage,
-                    user_context: `Admin Aksa (${session?.user?.name || 'User'})`
-                }),
+                    user_context: `Admin Eksekutif Aksa. Jawab dengan ringkas dan profesional.`
+                })
             });
 
             if (response.ok) {
                 const data = await response.json();
                 setChatMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
             } else {
-                setChatMessages(prev => [...prev, { role: 'ai', text: "Maaf, API OpenRouter/Gemma sedang sibuk atau error." }]);
+                setChatMessages(prev => [...prev, { role: 'ai', text: "⚠️ Maaf, gagal memproses respons AI (Error 500)." }]);
             }
         } catch (error) {
-            console.error("Chat Error:", error);
-            setChatMessages(prev => [...prev, { role: 'ai', text: "Gagal terhubung ke Server FastAPI. Pastikan backend menyala (uvicorn main:app)." }]);
+            setChatMessages(prev => [...prev, { role: 'ai', text: "❌ Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
         } finally {
             setIsAiTyping(false);
         }
     };
+
+    // --- VARIABEL STATUS UNTUK TOP BAR & CHATBOT ---
+    const isSystemOnline = systemStatus.fastApi === 'online' && systemStatus.supabase === 'online';
+    const isSystemChecking = systemStatus.fastApi === 'checking' || systemStatus.supabase === 'checking';
+    const isFastApiConnected = systemStatus.fastApi === 'online'; // PERBAIKAN: Variabel ini dikembalikan agar chatbot tidak error
 
     const formatRole = (role?: string) => {
         if (role === 'SUPER_ADMIN') return 'Super Admin';
         if (role === 'STATE_ADMIN') return 'Admin Provinsi';
         if (role === 'CITY_ADMIN') return 'Kepala Cabang';
         if (role === 'RETAILER_ADMIN') return 'Manajer Retailer';
-        if (role === 'DATA_ENGINEER') return 'Data Engineer';
         return 'Pengguna';
     };
-
-    const firstName = session?.user?.name?.split(' ')[0] || 'User';
-    const avatarSeed = session?.user?.email || 'default-user';
-    const userRole = (session?.user as any)?.role;
 
     return (
         <div className="flex h-[100dvh] w-full bg-[#F4F7FE] overflow-hidden font-sans text-slate-600 relative">
 
+            {/* --- TOAST NOTIFICATION --- */}
             {toast && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[150] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[150] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertTriangle size={20} className="shrink-0" />}
                     <p className="leading-tight">{toast.message}</p>
                 </div>
             )}
 
+            {/* --- POP-UP MODAL DIAGNOSTIK SISTEM --- */}
+            {isSystemModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[130] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center border border-slate-100">
+                        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-sm border border-indigo-100">
+                            <ShieldCheck size={32} />
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight text-center">Diagnostik Sistem</h3>
+                        <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed text-center">
+                            Memeriksa konektivitas infrastruktur sebelum Anda memantau Dashboard.
+                        </p>
+
+                        <div className="w-full space-y-4 mb-8">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Activity size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">AI Engine (FastAPI)</span>
+                                </div>
+                                {systemStatus.fastApi === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.fastApi === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><ServerCrash size={12} /> Offline</span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Database size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">Database (Supabase)</span>
+                                </div>
+                                {systemStatus.supabase === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.supabase === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><AlertTriangle size={12} /> Offline</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setIsSystemModalOpen(false)}
+                            disabled={isSystemChecking}
+                            className="w-full py-4 px-4 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white font-bold text-sm rounded-[24px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                        >
+                            {isSystemChecking ? 'Menunggu Hasil...' : 'Masuk Dashboard'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL KONFIRMASI LOGOUT */}
             {isLogoutModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="bg-white rounded-[32px] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center text-center border border-slate-100">
@@ -230,7 +294,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             Apakah Anda yakin ingin keluar dari sistem? Sesi Anda akan diakhiri.
                         </p>
                         <div className="flex gap-3 w-full">
-                            <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-3.5 px-4 bg-slate-50 text-slate-600 font-bold text-sm rounded-[24px] hover:bg-slate-100 transition-colors border border-slate-200 active:scale-95">
+                            <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-3.5 px-4 bg-slate-50 text-slate-600 font-bold text-sm rounded-[24px] hover:bg-slate-100 transition-colors border border-slate-200">
                                 Batal
                             </button>
                             <button onClick={handleLogout} className="flex-1 py-3.5 px-4 bg-red-500 text-white font-bold text-sm rounded-[24px] hover:bg-red-600 transition-colors shadow-[0_8px_20px_rgba(239,68,68,0.3)] active:scale-95">
@@ -241,19 +305,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
             )}
 
+            {/* OVERLAY MOBILE SIDEBAR */}
             <div
                 className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] lg:hidden transition-opacity duration-300 ease-in-out ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
+            {/* SIDEBAR */}
             <aside className={`fixed lg:relative top-0 left-0 h-[100dvh] w-[280px] bg-[#ffffff] flex flex-col py-6 px-5 z-[100] rounded-r-[32px] lg:rounded-none lg:rounded-br-[40px] lg:border-r lg:border-slate-100 shadow-[20px_0_40px_rgba(0,0,0,0.1)] lg:shadow-none transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex items-center justify-between mb-8 px-3 shrink-0">
                     <div className="flex items-center gap-3">
-                        <img
-                            src="/Logo-AksaAnalitika-BgWhite.png"
-                            alt="AKSA Analitika"
-                            className="h-14 lg:h-16 w-auto object-contain"
-                        />
+                        <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA Analitika" className="h-14 lg:h-16 w-auto object-contain" />
                     </div>
                     <button className="lg:hidden p-2 text-slate-400 hover:text-[#4f46e5] hover:bg-slate-50 rounded-full transition-all active:scale-90" onClick={() => setIsMobileMenuOpen(false)}>
                         <X size={20} strokeWidth={2.5} />
@@ -301,10 +363,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     <Link href="/dashboard/admin/profile" onClick={() => setIsMobileMenuOpen(false)}
                         className={`w-full flex items-center justify-between p-3 rounded-[24px] transition-all duration-200 group text-left ${pathname.includes('/profile') ? 'bg-[#EDF2FE]' : 'bg-transparent hover:bg-slate-50'}`}>
                         <div className="flex items-center gap-3 overflow-hidden">
-                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${session?.user?.email}`} alt="Profile" className="w-10 h-10 rounded-full object-cover bg-slate-200 shadow-sm border-2 border-white group-hover:scale-105 transition-transform" />
+                            <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover bg-slate-200 shadow-sm border-2 border-white group-hover:scale-105 transition-transform" />
                             <div className="overflow-hidden">
                                 <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>
-                                    {session?.user?.name || 'Memuat...'}
+                                    {userName}
                                 </p>
                                 <p className="text-[11px] text-slate-500 font-medium truncate">
                                     {formatRole(userRole)}
@@ -316,16 +378,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
             </aside>
 
+            {/* MAIN CONTENT AREA */}
             <div className="flex-1 h-full overflow-y-auto relative custom-scrollbar bg-[#F4F7FE]" onScroll={handleScroll}>
-                <header className={`sticky top-0 z-[70] w-full transition-all duration-300 rounded-b-[32px] lg:rounded-b-none lg:rounded-br-[40px] ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)]' : 'bg-white/80 backdrop-blur-md border-b border-slate-200/50'}`}>
 
+                {/* HEADER TOPBAR */}
+                <header className={`sticky top-0 z-[70] w-full transition-all duration-300 rounded-b-[32px] lg:rounded-b-none lg:rounded-br-[40px] ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)]' : 'bg-white/80 backdrop-blur-md border-b border-slate-200/50'}`}>
                     <div className="flex lg:hidden items-center justify-between px-4 sm:px-6 h-[72px]">
                         <button className="w-10 h-10 flex items-center justify-center bg-white border border-slate-100 shadow-sm text-slate-700 hover:text-[#4f46e5] hover:bg-[#EDF2FE] hover:border-[#EDF2FE] rounded-2xl transition-all active:scale-95" onClick={() => setIsMobileMenuOpen(true)}>
                             <Menu size={22} strokeWidth={2.5} />
                         </button>
-
                         <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA" className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm" />
-
                         <div className="flex items-center gap-3">
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative w-9 h-9 bg-white rounded-full flex items-center justify-center text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5] transition-colors active:scale-95 border border-slate-200 shadow-sm">
                                 <Bell size={16} />
@@ -351,13 +413,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                 <p className="text-xs font-semibold text-slate-600">{currentLocation}</p>
                             </div>
 
+                            {/* --- INDIKATOR STATUS SISTEM DINAMIS --- */}
+                            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm cursor-help transition-all duration-300 ${isSystemChecking ? 'bg-amber-50 border border-amber-100 text-amber-700' :
+                                isSystemOnline ? 'bg-emerald-50 border border-emerald-100 text-emerald-700' :
+                                    'bg-red-50 border border-red-100 text-red-700'
+                                }`}>
+                                <span className={`w-2 h-2 rounded-full ${isSystemChecking ? 'bg-amber-500 animate-pulse' :
+                                    isSystemOnline ? 'bg-emerald-500 animate-pulse' :
+                                        'bg-red-500'
+                                    }`}></span>
+                                {isSystemChecking ? 'Memeriksa Sistem...' : isSystemOnline ? 'Sistem Optimal' : 'Koneksi Terputus'}
+                            </div>
+
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="w-10 h-10 bg-white rounded-full border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:text-[#4f46e5] hover:bg-slate-50 transition-colors relative">
                                 <Bell size={18} />
                                 {unreadCount > 0 && <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>}
                             </button>
 
                             {isNotifOpen && (
-                                <div className="absolute right-32 top-[calc(100%+8px)] w-[300px] sm:w-[340px] bg-white rounded-[24px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 z-[100]">
+                                <div className="absolute right-0 top-[calc(100%+8px)] w-[300px] sm:w-[340px] bg-white rounded-[24px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.2)] border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 z-[100]">
                                     <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
                                         <span className="font-bold text-slate-800 text-sm">Notifikasi Masuk</span>
                                         {unreadCount > 0 && <span className="text-[10px] font-bold text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-full">{unreadCount} Baru</span>}
@@ -390,12 +464,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     )}
                                 </div>
                             )}
-
-                            {pathname === '/dashboard/admin' && (
-                                <button onClick={() => showToast("Mengunduh Laporan Eksekutif...", "success")} className="flex items-center gap-2 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white px-5 py-2.5 rounded-[40px] text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-95 animate-in fade-in group">
-                                    <Download size={16} className="group-hover:-translate-y-0.5 transition-transform" /> Laporan
-                                </button>
-                            )}
                         </div>
                     </div>
                 </header>
@@ -404,29 +472,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {children}
                 </main>
 
+                {/* AI CHATBOT KHUSUS ADMIN */}
                 <div className="fixed bottom-6 right-4 sm:right-6 lg:bottom-10 lg:right-10 z-[80] flex flex-col items-end">
                     {isChatOpen && (
                         <div className="bg-white w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
-
-                            {/* PERBAIKAN: Header Chat menampilkan status Offline jika belum terhubung */}
                             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <Bot size={24} />
                                     <div>
-                                        <span className="font-bold text-base tracking-tight block leading-tight">Gemma 4 Analytics</span>
-                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerOff size={10} /> Offline</span>}
+                                        <span className="font-bold text-base tracking-tight block leading-tight">Gemma Analytics AI</span>
+                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerCrash size={10} /> Offline</span>}
                                     </div>
                                 </div>
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar">
-                                {/* PERBAIKAN: Pesan awal diubah menjadi peringatan jujur */}
-                                <div className="bg-white border-slate-200 text-slate-700 border p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar flex flex-col">
+                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium self-start">
                                     {isFastApiConnected
-                                        ? "Halo! Saya siap membantu menganalisis data nasional. Ada yang ingin ditanyakan?"
-                                        : "Halo! Saat ini model Gemma 4 AI belum terhubung ke server FastAPI. Fitur interaksi dinonaktifkan sementara."
-                                    }
+                                        ? `Akses Eksekutif terhubung. Ada yang bisa saya analisis hari ini, ${firstName}?`
+                                        : `Halo ${firstName}. Sayangnya model Gemma AI tidak terhubung ke server. Hubungi Data Engineer Anda.`}
                                 </div>
 
                                 {chatMessages.map((msg, i) => (
@@ -453,18 +518,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
                                     disabled={!isFastApiConnected || isAiTyping}
-                                    placeholder={isFastApiConnected ? "Tanya performa..." : "Menunggu koneksi server..."}
+                                    placeholder={isFastApiConnected ? "Ketik prompt analisis..." : "Server Offline..."}
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                 />
-                                <button type="submit" disabled={!isFastApiConnected || isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95 flex items-center justify-center">
+                                <button type="submit" disabled={!isFastApiConnected || isAiTyping || !chatInput.trim()} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95 flex items-center justify-center">
                                     <Send size={18} />
                                 </button>
                             </form>
                         </div>
                     )}
 
-                    {/* PERBAIKAN: Tombol trigger Chatbot diganti warna jika Offline */}
-                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all duration-300 border-[4px] border-white z-10">
+                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 transition-transform duration-300 border-[4px] border-white z-10 active:scale-95">
                         {isChatOpen ? <X size={24} /> : <Bot size={26} />}
                         {!isFastApiConnected && !isChatOpen && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-amber-400 border-2 border-white rounded-full"></span>}
                     </button>

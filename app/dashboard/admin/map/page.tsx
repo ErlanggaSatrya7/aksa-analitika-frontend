@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as echarts from 'echarts';
 import ReactECharts from 'echarts-for-react';
 import { MapPin, Target, Loader2, ChevronDown } from 'lucide-react';
@@ -77,6 +77,14 @@ export default function PetaDistribusiPage() {
 
                 const uppercaseProvinces = (dbData.availableProvinces || []).map((p: string) => p.toUpperCase());
                 setAllProvinces(uppercaseProvinces);
+
+                sessionStorage.setItem("ai_context_map_data", JSON.stringify({
+                    type: "distribution_map",
+                    total_volume: dbData.totalVolume,
+                    top_cities: dbData.topCities?.slice(0, 3),
+                    top_retailers: dbData.topRetailers?.slice(0, 3),
+                    last_updated: new Date().toISOString()
+                }));
             }
 
             setIsLoading(false);
@@ -97,6 +105,14 @@ export default function PetaDistribusiPage() {
 
             setMapAnalytics(newData);
 
+            sessionStorage.setItem("ai_context_map_data", JSON.stringify({
+                type: "distribution_map",
+                province: provinceName,
+                total_volume: newData.totalVolume,
+                top_cities: newData.topCities?.slice(0, 3),
+                top_retailers: newData.topRetailers?.slice(0, 3)
+            }));
+
             if (echartsRef.current && provinceName !== 'Nasional') {
                 const chart = echartsRef.current.getEchartsInstance();
                 chart.dispatchAction({ type: 'select', name: provinceName });
@@ -113,14 +129,15 @@ export default function PetaDistribusiPage() {
         triggerDataUpdate('Nasional');
     };
 
-    // PERBAIKAN: Menambahkan status `selected` langsung ke data provinsi yang aktif
-    const mapDataFormatted = nationalMapData.map((d: any) => ({
-        name: d.name.toUpperCase(),
-        value: d.value,
-        selected: d.name.toUpperCase() === selectedProvince.toUpperCase()
-    })) || [];
+    const mapDataFormatted = useMemo(() => {
+        return nationalMapData.map((d: any) => ({
+            name: d.name.toUpperCase(),
+            value: d.value,
+            selected: d.name.toUpperCase() === selectedProvince.toUpperCase()
+        })) || [];
+    }, [nationalMapData, selectedProvince]);
 
-    const mainMapOption = {
+    const mainMapOption = useMemo(() => ({
         backgroundColor: 'transparent',
         tooltip: { trigger: 'item', formatter: (params: any) => `<div style="font-weight:600; font-size:13px; color:#0F172A; text-transform:uppercase;">${params.name}</div><div style="color:#6A7BFA; font-weight:bold; margin-top:4px;">Volume: ${(params.value || 0).toLocaleString('id-ID')} Unit</div>`, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E2E8F0', padding: [12, 16] },
         visualMap: { min: 0, max: 50000, text: ['Tinggi', 'Rendah'], realtime: false, calculable: true, inRange: { color: ['#EDF2FE', '#818CF8', '#4f46e5'] }, itemWidth: 10, itemHeight: 80, bottom: 20, left: 20 },
@@ -133,7 +150,6 @@ export default function PetaDistribusiPage() {
             label: { show: true, color: '#64748B', fontSize: 8, formatter: '{b}' },
             itemStyle: { areaColor: '#E2E8F0', borderColor: '#FFFFFF', borderWidth: 1.5 },
             emphasis: { itemStyle: { areaColor: '#818CF8' } },
-            // PERBAIKAN EFEK HIGHLIGHT: Warna Emas/Amber, Border Putih Tebal, dan Shadow
             select: {
                 itemStyle: {
                     areaColor: '#F59E0B',
@@ -142,17 +158,27 @@ export default function PetaDistribusiPage() {
                     shadowColor: 'rgba(245, 158, 11, 0.7)',
                     shadowBlur: 15
                 },
-                label: {
-                    show: true,
-                    color: '#FFFFFF',
-                    fontWeight: '900',
-                    fontSize: 10
-                }
+                label: { show: true, color: '#FFFFFF', fontWeight: '900', fontSize: 10 }
             },
             selectedMode: 'single',
             data: mapDataFormatted
         }]
-    };
+    }), [mapDataFormatted]);
+
+    // FILTER TOP 5 DAN FORMAT NAMA RETAILER
+    const topCitiesData = useMemo(() => (mapAnalytics?.topCities || []).slice(0, 5), [mapAnalytics]);
+    const topProductsData = useMemo(() => (mapAnalytics?.topProducts || []).slice(0, 5), [mapAnalytics]);
+    const topRetailersData = useMemo(() => {
+        const rawData = (mapAnalytics?.topRetailers || []).slice(0, 5);
+        return rawData.map((d: any) => {
+            // Jika nama dideteksi murni angka (ID), tambahkan label "Retailer "
+            const isJustNumbers = /^\d+$/.test(String(d.name));
+            return {
+                ...d,
+                name: isJustNumbers ? `Retailer ${d.name}` : d.name
+            };
+        });
+    }, [mapAnalytics]);
 
     const barOptionTemplate = (data: any[], colorStops: any[]) => ({
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
@@ -193,7 +219,7 @@ export default function PetaDistribusiPage() {
 
                     <div className="w-full h-full min-h-[500px] bg-[#F8FAFC] rounded-[32px] overflow-hidden flex items-center justify-center">
                         {isMapLoaded ? (
-                            <ReactECharts ref={echartsRef} option={mainMapOption} style={{ height: '100%', width: '100%' }} onEvents={{ 'click': (p: any) => p.name && triggerDataUpdate(p.name) }} />
+                            <ReactECharts ref={echartsRef} option={mainMapOption} notMerge={true} style={{ height: '100%', width: '100%' }} onEvents={{ 'click': (p: any) => p.name && triggerDataUpdate(p.name) }} />
                         ) : (
                             <div className="flex flex-col items-center justify-center text-slate-400 font-semibold text-sm gap-3">
                                 <Loader2 size={32} className="animate-spin text-[#6A7BFA]" />
@@ -217,9 +243,9 @@ export default function PetaDistribusiPage() {
                     </div>
 
                     <div className="flex-1 w-full relative min-h-[250px]">
-                        {activeTab === 'kota' && <ReactECharts option={barOptionTemplate(mapAnalytics?.topCities || [], [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }])} style={{ height: '100%', width: '100%' }} />}
-                        {activeTab === 'retailer' && <ReactECharts option={barOptionTemplate(mapAnalytics?.topRetailers || [], [{ offset: 0, color: '#818CF8' }, { offset: 1, color: '#6A7BFA' }])} style={{ height: '100%', width: '100%' }} />}
-                        {activeTab === 'produk' && <ReactECharts option={{ tooltip: { trigger: 'item', formatter: (params: any) => `<div style="font-weight:bold; margin-bottom:4px;">${params.name}</div><div style="color:#6A7BFA; font-weight:bold;">${(params.value).toLocaleString('id-ID')} Unit (${params.percent}%)</div>` }, series: [{ type: 'pie', radius: ['45%', '70%'], data: mapAnalytics?.topProducts || [] }] }} style={{ height: '100%', width: '100%' }} />}
+                        {activeTab === 'kota' && <ReactECharts option={barOptionTemplate(topCitiesData, [{ offset: 0, color: '#6A7BFA' }, { offset: 1, color: '#4f46e5' }])} style={{ height: '100%', width: '100%' }} />}
+                        {activeTab === 'retailer' && <ReactECharts option={barOptionTemplate(topRetailersData, [{ offset: 0, color: '#818CF8' }, { offset: 1, color: '#6A7BFA' }])} style={{ height: '100%', width: '100%' }} />}
+                        {activeTab === 'produk' && <ReactECharts option={{ tooltip: { trigger: 'item', formatter: (params: any) => `<div style="font-weight:bold; margin-bottom:4px;">${params.name}</div><div style="color:#6A7BFA; font-weight:bold;">${(params.value).toLocaleString('id-ID')} Unit (${params.percent}%)</div>` }, series: [{ type: 'pie', radius: ['45%', '70%'], data: topProductsData }] }} style={{ height: '100%', width: '100%' }} />}
                     </div>
                 </div>
             </div>

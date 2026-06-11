@@ -5,121 +5,145 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        // 1. TARIK SEMUA DATA YANG DIBUTUHKAN (Sangat cepat karena hanya memilih kolom tertentu)
-        const rawSales = await prisma.sales_data.findMany({
-            select: {
-                unitsSold: true,
-                totalSales: true,
-                operatingMargin: true,
-                product: true,
-                salesMethod: true,
-                invoiceDate: true,
-                retailer: {
-                    select: {
-                        state: true,
-                        name: true
-                    }
-                }
-            }
+        // ============================================================================
+        // TAHAP 1: AGREGASI DI LEVEL DATABASE
+        // ============================================================================
+
+        const [
+            summaryAgg,
+            stateAgg,
+            productAgg,
+            methodAgg,
+            rawRetailerShare
+        ] = await Promise.all([
+            prisma.sales_data.aggregate({
+                _sum: { unitsSold: true, totalSales: true },
+                _avg: { operatingMargin: true }
+            }),
+            prisma.sales_data.groupBy({
+                by: ['state'],
+                _sum: { unitsSold: true },
+                orderBy: { _sum: { unitsSold: 'desc' } }
+            }),
+            prisma.sales_data.groupBy({
+                by: ['product'],
+                _sum: { unitsSold: true },
+                orderBy: { _sum: { unitsSold: 'desc' } },
+                take: 5
+            }),
+            prisma.sales_data.groupBy({
+                by: ['salesMethod'],
+                _sum: { unitsSold: true },
+                orderBy: { _sum: { unitsSold: 'desc' } }
+            }),
+            prisma.sales_data.groupBy({
+                by: ['retailerId'],
+                _sum: { unitsSold: true },
+                orderBy: { _sum: { unitsSold: 'desc' } }
+            })
+        ]);
+
+        // ============================================================================
+        // TAHAP 2: GROUPING RETAILER (MENGGABUNGKAN CABANG & ID JADI 6 BRAND UTAMA)
+        // ============================================================================
+
+        const retailerIds = rawRetailerShare.map(r => r.retailerId);
+        const retailersMaster = await prisma.retailers.findMany({
+            where: { id: { in: retailerIds } },
+            select: { id: true, name: true }
         });
 
-        if (rawSales.length === 0) {
-            return NextResponse.json({ error: "Data kosong" }, { status: 404 });
-        }
+        const consolidatedMap = new Map<string, number>();
 
-        // 2. VARIABEL UNTUK MENAMPUNG HASIL AGREGASI
-        let totalUnits = 0;
-        let totalSales = 0;
-        let totalMargin = 0;
+        rawRetailerShare.forEach(item => {
+            const detail = retailersMaster.find(r => r.id === item.retailerId);
 
-        const stateMap = new Map<string, number>();
-        const productMap = new Map<string, number>();
-        const methodMap = new Map<string, number>();
-        const retailerMap = new Map<string, number>();
+            // Ambil data mentah (bisa berupa "MATAHARI - BALI" atau "1000002")
+            const rawName = (detail?.name || item.retailerId).toUpperCase();
+
+            let finalName = "Lainnya";
+
+            // LOGIKA FILTERING KETAT: Apapun cabangnya, kumpulkan ke Brand Utamanya
+            if (rawName.includes("ADIDAS") || rawName.includes("1000001")) {
+                finalName = "ADIDAS OFFICIAL STORE";
+            } else if (rawName.includes("MATAHARI") || rawName.includes("1000002")) {
+                finalName = "MATAHARI";
+            } else if (rawName.includes("PLANET SPORTS") || rawName.includes("PLANETSPORT") || rawName.includes("1000003")) {
+                finalName = "PLANET SPORTS";
+            } else if (rawName.includes("RAMAYANA") || rawName.includes("1000004")) {
+                finalName = "RAMAYANA";
+            } else if (rawName.includes("SPORTS STATION") || rawName.includes("SPORTSTATION") || rawName.includes("1000005")) {
+                finalName = "SPORTS STATION";
+            } else if (rawName.includes("TRANSMART") || rawName.includes("1000006")) {
+                finalName = "TRANSMART";
+            } else {
+                finalName = rawName; // Fallback untuk berjaga-jaga
+            }
+
+            // Jumlahkan total unit terjualnya
+            const currentTotal = consolidatedMap.get(finalName) || 0;
+            consolidatedMap.set(finalName, currentTotal + Number(item._sum.unitsSold || 0));
+        });
+
+        // Hasil akhir pasti akan mengelompok rapi maksimal 6-7 item
+        const retailerShare = Array.from(consolidatedMap.entries())
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+
+        // ============================================================================
+        // TAHAP 3: TREND BULANAN (PAKSA TAMPIL 12 BULAN Penuh)
+        // ============================================================================
+
+        const datesData = await prisma.sales_data.findMany({
+            select: { invoiceDate: true, unitsSold: true }
+        });
+
         const trendMap = new Map<string, number>();
-
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
 
-        // 3. LOOPING UNTUK MENGHITUNG (AGREGASI) SELURUH 9600+ DATA
-        rawSales.forEach(row => {
-            // A. Summary (Total Keseluruhan)
-            totalUnits += row.unitsSold;
-            totalSales += row.totalSales;
-            totalMargin += row.operatingMargin;
-
-            // B. Distribusi Provinsi (Berdasarkan Units Sold)
-            const state = row.retailer?.state || 'Tidak Diketahui';
-            stateMap.set(state, (stateMap.get(state) || 0) + row.unitsSold);
-
-            // C. Top Produk
-            productMap.set(row.product, (productMap.get(row.product) || 0) + row.unitsSold);
-
-            // D. Sales Method
-            methodMap.set(row.salesMethod, (methodMap.get(row.salesMethod) || 0) + row.unitsSold);
-
-            // E. Retailer Share
-            const retailerName = row.retailer?.name || 'Unknown Retailer';
-            retailerMap.set(retailerName, (retailerMap.get(retailerName) || 0) + row.unitsSold);
-
-            // F. Trend Bulanan
-            const date = new Date(row.invoiceDate);
-            const monthKey = monthNames[date.getMonth()]; // Misal: "Jan", "Feb"
-            trendMap.set(monthKey, (trendMap.get(monthKey) || 0) + row.unitsSold);
-        });
-
-        // 4. FORMATTING DATA SESUAI PERMINTAAN FRONTEND
-
-        // -- Provinsi --
-        const sortedProvinces = Array.from(stateMap.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-
-        // Ambil nilai tertinggi untuk menghitung persentase bar (Progress Bar di Top 7)
-        const maxStateValue = sortedProvinces.length > 0 ? sortedProvinces[0].value : 1;
-        const topProvinces = sortedProvinces.slice(0, 7).map(p => ({
-            name: p.name,
-            val: p.value,
-            pct: `${Math.min(100, Math.round((p.value / maxStateValue) * 100))}%`
-        }));
-
-        // -- Produk (Top 5) --
-        const topProducts = Array.from(productMap.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 5);
-
-        // -- Sales Method --
-        const salesMethod = Array.from(methodMap.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-
-        // -- Retailer Share --
-        const retailerShare = Array.from(retailerMap.entries())
-            .map(([name, value]) => ({ name, value }))
-            .sort((a, b) => b.value - a.value);
-
-        // -- Trend Bulanan (Pastikan urut dari Jan -> Des) --
-        const labels: string[] = [];
-        const values: number[] = [];
-        monthNames.forEach(month => {
-            if (trendMap.has(month)) {
-                labels.push(month);
-                values.push(trendMap.get(month) || 0);
+        datesData.forEach(row => {
+            if (row.invoiceDate) {
+                const date = new Date(row.invoiceDate);
+                const monthKey = monthNames[date.getMonth()];
+                trendMap.set(monthKey, (trendMap.get(monthKey) || 0) + row.unitsSold);
             }
         });
 
-        // 5. KIRIM RESPONSE KE FRONTEND
+        // Pastikan array selalu berisi 12 bulan berurutan
+        const labels = monthNames;
+        const values = monthNames.map(month => trendMap.get(month) || 0);
+
+        // ============================================================================
+        // TAHAP 4: FORMATTING DATA UNTUK ECHARTS FRONTEND
+        // ============================================================================
+
+        const maxStateValue = stateAgg.length > 0 ? Number(stateAgg[0]._sum.unitsSold || 1) : 1;
+
+        const mapDistribution = stateAgg.map(s => ({
+            name: s.state,
+            value: Number(s._sum.unitsSold || 0)
+        }));
+
+        const topProvinces = stateAgg.slice(0, 7).map(s => {
+            const val = Number(s._sum.unitsSold || 0);
+            return {
+                name: s.state,
+                val: val,
+                pct: `${Math.min(100, Math.round((val / maxStateValue) * 100))}%`
+            };
+        });
+
         return NextResponse.json({
             summary: {
-                totalUnits: totalUnits,
-                totalSales: totalSales,
-                avgMargin: (totalMargin / rawSales.length) * 100 // Rata-rata margin dalam persentase
+                totalUnits: Number(summaryAgg._sum.unitsSold || 0),
+                totalSales: Number(summaryAgg._sum.totalSales || 0),
+                avgMargin: Number(summaryAgg._avg.operatingMargin || 0) * 100
             },
-            mapDistribution: sortedProvinces, // Semua provinsi akan masuk ke peta!
-            topProvinces: topProvinces, // Hanya 7 teratas untuk list di sebelah peta
+            mapDistribution,
+            topProvinces,
             trendLine: { labels, values },
-            salesMethod,
-            topProducts,
+            salesMethod: methodAgg.map(m => ({ name: m.salesMethod, value: Number(m._sum.unitsSold || 0) })),
+            topProducts: productAgg.map(p => ({ name: p.product, value: Number(p._sum.unitsSold || 0) })),
             retailerShare
         }, { status: 200 });
 

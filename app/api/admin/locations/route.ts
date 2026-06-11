@@ -52,26 +52,51 @@ export async function GET() {
             { name: "Binjai", provinceName: "Sumatera Utara" }, { name: "Gunungsitoli", provinceName: "Sumatera Utara" }, { name: "Medan", provinceName: "Sumatera Utara" }, { name: "Padangsidempuan", provinceName: "Sumatera Utara" }, { name: "Pematangsiantar", provinceName: "Sumatera Utara" }, { name: "Sibolga", provinceName: "Sumatera Utara" }, { name: "Tanjungbalai", provinceName: "Sumatera Utara" }, { name: "Tebing Tinggi", provinceName: "Sumatera Utara" }
         ];
 
-        // 3. Ambil data asli dari database
+        // 3. AMBIL DATA PRODUK (DINAMIS DARI DATABASE)
+        const productsData = await prisma.sales_data.findMany({
+            select: { product: true },
+            distinct: ['product']
+        });
+        const products = productsData.map(p => p.product).filter(Boolean);
+
+        // 4. AMBIL DAN FORMAT DATA RETAILER (MENGUBAH ID KE NAMA BRAND)
         const retailersData = await prisma.retailers.findMany({
-            select: {
-                id: true,
-                name: true,
-                city: true
+            select: { id: true, name: true, city: true }
+        });
+
+        // Mapping untuk membersihkan nama dan membuang duplikat nama per kota
+        const uniqueRetailersMap = new Map();
+
+        retailersData.forEach(r => {
+            const rawName = (r.name || r.id).toUpperCase();
+            let finalBrandName = "Lainnya";
+
+            if (rawName.includes("ADIDAS") || rawName.includes("1000001")) finalBrandName = "ADIDAS OFFICIAL STORE";
+            else if (rawName.includes("MATAHARI") || rawName.includes("1000002")) finalBrandName = "MATAHARI";
+            else if (rawName.includes("PLANET SPORTS") || rawName.includes("PLANETSPORT") || rawName.includes("1000003")) finalBrandName = "PLANET SPORTS";
+            else if (rawName.includes("RAMAYANA") || rawName.includes("1000004")) finalBrandName = "RAMAYANA";
+            else if (rawName.includes("SPORTS STATION") || rawName.includes("SPORTSTATION") || rawName.includes("1000005")) finalBrandName = "SPORTS STATION";
+            else if (rawName.includes("TRANSMART") || rawName.includes("1000006")) finalBrandName = "TRANSMART";
+            else finalBrandName = rawName.split(' - ')[0] || rawName;
+
+            // Kunci unik agar di dropdown kota yang sama tidak muncul "MATAHARI" berkali-kali
+            const uniqueKey = `${finalBrandName}_${r.city}`;
+            if (!uniqueRetailersMap.has(uniqueKey)) {
+                uniqueRetailersMap.set(uniqueKey, {
+                    id: r.id,
+                    name: finalBrandName,
+                    cityName: r.city
+                });
             }
         });
 
-        // 4. Mapping data agar sesuai dengan frontend (nama field harus konsisten)
-        const retailers = retailersData.map(r => ({
-            id: r.id,
-            name: r.name,
-            cityName: r.city
-        }));
+        const retailers = Array.from(uniqueRetailersMap.values());
 
         return NextResponse.json({
             states: states,
             cities: cities,
-            retailers: retailers
+            retailers: retailers,
+            products: products // <- Sekarang dikirim ke frontend
         }, { status: 200 });
 
     } catch (error) {
