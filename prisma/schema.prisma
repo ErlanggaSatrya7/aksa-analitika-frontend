@@ -8,8 +8,8 @@ datasource db {
 }
 
 model users {
-  id            String          @id @default(uuid())
-  email         String          @unique
+  id            String        @id @default(uuid())
+  email         String        @unique
   fullName      String
   role          Role
   assignedState String?
@@ -39,13 +39,12 @@ model dataset_uploads {
   fileSize       String?
   totalRows      Int
   uploadedBy     String
-  // 👇 Tambahan: Memastikan Archive UI tahu file ini valid atau gagal
   status         String           @default("SUCCESS") 
   uploadedAt     DateTime         @default(now()) @db.Timestamptz(6)
   
   sales_data     sales_data[]
-  // 👇 Tambahan: Relasi balik dari system_history
   system_history system_history[] 
+  model_metrics  model_metrics[]
 }
 
 model sales_data {
@@ -53,7 +52,6 @@ model sales_data {
   retailerId      String
   invoiceDate     DateTime         @db.Timestamptz(6)
   
-  // 👇 Tambahan: Snapshot lokasi statis untuk kebutuhan BI/Analitik
   region          String           
   state           String           
   city            String           
@@ -74,7 +72,6 @@ model sales_data {
   @@index([invoiceDate])
   @@index([retailerId])
   @@index([uploadId])
-  // 👇 Tambahan: Index komposit untuk mempercepat filter geospasial
   @@index([region, state, city]) 
 }
 
@@ -106,11 +103,21 @@ model system_history {
   status      String?
   notes       String?
   
-  // 👇 Tambahan: Mengikat History ke Dataset Archive
   uploadId    String?          
   dataset     dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
   
   created_at  DateTime         @default(now()) @db.Timestamptz(6)
+}
+
+model model_metrics {
+  id          String           @id @default(dbgenerated("gen_random_uuid()"))
+  uploadId    String?
+  mape        Float?
+  mae         Float?
+  r2          Float?
+  created_at  DateTime         @default(now()) @db.Timestamptz(6)
+
+  dataset     dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 }
 
 enum Role {

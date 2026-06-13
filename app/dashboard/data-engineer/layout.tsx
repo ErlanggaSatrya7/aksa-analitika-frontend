@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
@@ -34,6 +34,7 @@ export default function DataEngineerLayout({ children }: { children: React.React
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [isAiTyping, setIsAiTyping] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
     const [currentDate, setCurrentDate] = useState('Memuat...');
@@ -44,6 +45,11 @@ export default function DataEngineerLayout({ children }: { children: React.React
         setToast({ message, type });
         setTimeout(() => setToast(null), 4000);
     };
+
+    // Auto-scroll ke bawah saat ada pesan baru di chat
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chatMessages, isAiTyping, isChatOpen]);
 
     useEffect(() => {
         const now = new Date();
@@ -56,8 +62,8 @@ export default function DataEngineerLayout({ children }: { children: React.React
         else if (hour >= 15 && hour < 18) setGreeting('Selamat Sore');
         else setGreeting('Selamat Malam');
 
-        setCurrentLocation(user?.assignedCity ? `${user.assignedCity}, ID` : 'HQ Pusat, ID');
-    }, [user?.assignedCity]);
+        setCurrentLocation(user?.assignedProvince ? `${user.assignedProvince}, ID` : 'HQ Pusat, ID');
+    }, [user?.assignedProvince]);
 
     // --- LOGIKA DIAGNOSTIK INFRASTRUKTUR ---
     useEffect(() => {
@@ -91,35 +97,48 @@ export default function DataEngineerLayout({ children }: { children: React.React
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
-    // --- LOGIKA AI CHATBOT (SEKARANG SUDAH AKTIF!) ---
+    // =====================================================================
+    // FUNGSI PEMBERSIH SIMBOL TEXT (Menghilangkan * # $ / dll)
+    // =====================================================================
+    const cleanAiResponse = (text: string) => {
+        if (!text) return "";
+        let cleanedText = text.replace(/[*#$/\\_~`>]/g, '');
+        cleanedText = cleanedText.replace(/\s{2,}/g, ' ').trim();
+        return cleanedText;
+    };
+
+    // --- LOGIKA AI CHATBOT ---
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!chatInput.trim()) return;
 
-        const userMessage = chatInput;
+        const userMessage = chatInput.trim();
         setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setChatInput('');
         setIsAiTyping(true);
 
         try {
-            // Memanggil API AI yang ada di main.py kamu
             const response = await fetch('http://localhost:8000/api/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: userMessage,
-                    user_context: `Lead Data Engineer. Jawab dengan ringkas dan profesional terkait MLOps.`
+                    user_context: user?.name || "Pengguna",
+                    user_role: user?.role || "DATA_ENGINEER",
+                    assigned_state: user?.assignedProvince || "",
+                    assigned_retailer: user?.assignedRetailer || ""
                 })
             });
 
             if (response.ok) {
                 const data = await response.json();
-                setChatMessages(prev => [...prev, { role: 'ai', text: data.reply }]);
+                const sanitizedReply = cleanAiResponse(data.reply);
+                setChatMessages(prev => [...prev, { role: 'ai', text: sanitizedReply }]);
             } else {
-                setChatMessages(prev => [...prev, { role: 'ai', text: "⚠️ Maaf, gagal memproses respons AI (Error 500)." }]);
+                setChatMessages(prev => [...prev, { role: 'ai', text: "Maaf, gagal memproses respons AI (Error 500)." }]);
             }
         } catch (error) {
-            setChatMessages(prev => [...prev, { role: 'ai', text: "❌ Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
+            setChatMessages(prev => [...prev, { role: 'ai', text: "Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
         } finally {
             setIsAiTyping(false);
         }
@@ -328,14 +347,14 @@ export default function DataEngineerLayout({ children }: { children: React.React
                             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <Bot size={24} />
-                                    <span className="font-bold text-base tracking-tight">Gemma SysOps AI</span>
+                                    <span className="font-bold text-base tracking-tight">AKSA COPILOT</span>
                                 </div>
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar flex flex-col">
                                 <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium self-start">
-                                    Status server terhubung. Ada yang bisa saya bantu hari ini, {firstName}?
+                                    Status server terhubung. Saya AKSA COPILOT, ada yang bisa saya bantu hari ini, {firstName}?
                                 </div>
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
@@ -353,6 +372,7 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                         </div>
                                     </div>
                                 )}
+                                <div ref={messagesEndRef} />
                             </div>
 
                             <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 shrink-0">
@@ -360,7 +380,7 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                     type="text"
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
-                                    placeholder="Tanya Gemma AI..."
+                                    placeholder="Tanya AKSA COPILOT..."
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 text-sm font-medium transition-all"
                                 />
                                 <button type="submit" disabled={isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95">

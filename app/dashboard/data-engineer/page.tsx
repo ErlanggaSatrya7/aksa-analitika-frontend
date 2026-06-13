@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
     Database, FileSpreadsheet, HardDrive, BrainCircuit, ArrowRight,
     TrendingUp, CloudUpload, Eye, ServerCrash, Activity, CheckCircle2,
-    AlertTriangle, Target, Percent, Sparkles
+    Target, Percent, Sparkles, TrendingDown, Gauge
 } from 'lucide-react';
 
 export default function DataEngineerDashboard() {
@@ -16,31 +16,40 @@ export default function DataEngineerDashboard() {
     const [fastApiStatus, setFastApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
     const [isModelReady, setIsModelReady] = useState(false);
 
-    // STATE UNTUK METRIK ASLI DARI DATABASE
+    // STATE UNTUK METRIK DINAMIS DARI DATABASE (Real-time!)
     const [championMetrics, setChampionMetrics] = useState({
-        r2: '0.00',
-        mape: '0.00',
-        mae: '0.0'
+        mape: 0.0,
+        mae: 0.0,
+        r2: 0.0
     });
 
     useEffect(() => {
-        // 1. Fetch Data dari Database Supabase (DATA ASLI)
+        // 1. Fetch Data & Metrics dari Backend
         const fetchDatabase = async () => {
             const startTime = performance.now();
             try {
-                const res = await fetch('/api/data-engineer/dashboard');
-                if (res.ok) {
-                    const data = await res.json();
+                // Fetch baris dataset
+                const resDb = await fetch('/api/data-engineer/dashboard');
+                if (resDb.ok) {
+                    const data = await resDb.json();
                     setRecentData(data.recentData || []);
                     setTotalRows(data.totalRows || 0);
+                }
 
-                    // MENARIK DATA ASLI DARI API BACKEND
-                    if (data.championMetrics) {
-                        setChampionMetrics(data.championMetrics);
+                // Fetch Metrik Real-Time
+                const resMetrics = await fetch('http://localhost:8000/api/model/latest-metrics');
+                if (resMetrics.ok) {
+                    const metData = await resMetrics.json();
+                    if (metData.metrics) {
+                        setChampionMetrics({
+                            mape: metData.metrics.mape,
+                            mae: metData.metrics.mae,
+                            r2: metData.metrics.r2
+                        });
                     }
                 }
             } catch (error) {
-                console.error("Gagal mengambil data database:", error);
+                console.error("Gagal mengambil data database/metrik:", error);
             } finally {
                 const endTime = performance.now();
                 setLatency(Math.round(endTime - startTime));
@@ -48,7 +57,7 @@ export default function DataEngineerDashboard() {
             }
         };
 
-        // 2. Fetch Status Server FastAPI (ML Engine)
+        // 2. Fetch Status Server FastAPI
         const checkFastApi = async () => {
             try {
                 const res = await fetch('http://localhost:8000/api/health');
@@ -68,7 +77,10 @@ export default function DataEngineerDashboard() {
         fetchDatabase();
         checkFastApi();
 
-        const interval = setInterval(checkFastApi, 30000);
+        const interval = setInterval(() => {
+            checkFastApi();
+            fetchDatabase(); // Refresh metrik setiap 30 detik untuk berjaga-jaga jika ada pipeline selesai
+        }, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -78,6 +90,40 @@ export default function DataEngineerDashboard() {
         if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
         return num.toString();
     };
+
+    // =========================================================
+    // LOGIKA PERHITUNGAN METRIK FORECAST STATUS (Sesuai Rule)
+    // =========================================================
+    const mapeValue = championMetrics.mape;
+    const forecastAccuracy = (100 - mapeValue).toFixed(2);
+
+    let statusText = "Poor";
+    let statusColor = "text-red-600 bg-red-50 border-red-200";
+    let statusIconColor = "text-red-600 bg-red-100";
+    let statusDot = "bg-red-500";
+
+    // Validasi agar saat loading/data kosong tidak merah
+    if (mapeValue === 0) {
+        statusText = "Waiting...";
+        statusColor = "text-slate-600 bg-slate-50 border-slate-200";
+        statusIconColor = "text-slate-500 bg-slate-200";
+        statusDot = "bg-slate-400";
+    } else if (mapeValue < 10) {
+        statusText = "Excellent";
+        statusColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
+        statusIconColor = "text-emerald-600 bg-emerald-100";
+        statusDot = "bg-emerald-500";
+    } else if (mapeValue <= 20) {
+        statusText = "Good";
+        statusColor = "text-blue-600 bg-blue-50 border-blue-100";
+        statusIconColor = "text-blue-600 bg-blue-100";
+        statusDot = "bg-blue-500";
+    } else if (mapeValue <= 50) {
+        statusText = "Fair";
+        statusColor = "text-amber-600 bg-amber-50 border-amber-100";
+        statusIconColor = "text-amber-600 bg-amber-100";
+        statusDot = "bg-amber-500";
+    }
 
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
@@ -108,89 +154,101 @@ export default function DataEngineerDashboard() {
                 </div>
             </div>
 
-            {/* --- 4 KARTU METRIK UTAMA --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-
-                {/* Kartu 1: Jumlah Data Historis */}
-                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_rgba(79,70,229,0.2)] transition-all duration-300 animate-in fade-in slide-in-from-bottom-6 fill-mode-both delay-100 relative group/card cursor-default min-h-[160px]">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-[#EDF2FE] text-[#6A7BFA] group-hover/card:bg-[#4f46e5] group-hover/card:text-white transition-colors rounded-2xl"><HardDrive size={20} /></div>
-                        <span className="text-[10px] font-bold text-[#4f46e5] bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full flex items-center gap-1"><TrendingUp size={12} /> Data Bersih</span>
-                    </div>
+            {/* --- BARIS 1: STATUS SISTEM & DATABASE (3 KARTU) --- */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
+                    <div className="p-4 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl"><HardDrive size={24} /></div>
                     <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 group-hover/card:text-[#4f46e5] transition-colors">Total Data Latih</p>
-                        <h3 className="text-2xl lg:text-3xl font-bold text-slate-900 tracking-tight">
-                            {isLoading ? '...' : formatTotalRows(totalRows)} <span className="text-lg text-slate-400 font-medium tracking-normal">Rows</span>
-                        </h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Total Data Latih</p>
+                        <h3 className="text-2xl font-bold text-slate-900">{isLoading ? '...' : formatTotalRows(totalRows)} <span className="text-sm font-medium text-slate-400">Rows</span></h3>
                     </div>
                 </div>
 
-                {/* Kartu 2: Latency Supabase */}
-                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] transition-all duration-300 animate-in fade-in slide-in-from-bottom-6 fill-mode-both delay-200 cursor-default group/card min-h-[160px]">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-emerald-50 text-emerald-600 group-hover/card:bg-emerald-500 group-hover/card:text-white transition-colors rounded-2xl"><Database size={20} /></div>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-full flex items-center gap-1">
-                            {isLoading ? '...' : `${latency}ms`}
-                        </span>
-                    </div>
+                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
+                    <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl"><Database size={24} /></div>
                     <div>
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 group-hover/card:text-emerald-600 transition-colors">Koneksi Database</p>
-                        <h3 className={`text-2xl lg:text-3xl font-bold tracking-tight ${isLoading ? 'text-slate-400' : (latency < 500 ? 'text-emerald-600' : 'text-amber-500')}`}>
-                            {isLoading ? 'Memuat...' : (latency < 500 ? 'Optimal' : 'Lambat')}
-                        </h3>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">DB Latency</p>
+                        <h3 className={`text-2xl font-bold ${latency < 500 ? 'text-emerald-600' : 'text-amber-500'}`}>{isLoading ? '...' : `${latency}ms`}</h3>
                     </div>
                 </div>
 
-                {/* Kartu 3: Status FastAPI */}
-                <div className={`bg-white rounded-[32px] p-6 border shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 animate-in fade-in slide-in-from-bottom-6 fill-mode-both delay-300 cursor-default group/card min-h-[160px] ${fastApiStatus === 'online' ? 'hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] border-slate-100' : 'hover:shadow-[0_20px_40px_-15px_rgba(239,68,68,0.2)] border-red-100'}`}>
-                    <div className="flex justify-between items-start mb-4">
-                        <div className={`p-3 rounded-2xl transition-colors ${fastApiStatus === 'checking' ? 'bg-slate-100 text-slate-400' : fastApiStatus === 'online' ? 'bg-emerald-50 text-emerald-600 group-hover/card:bg-emerald-500 group-hover/card:text-white' : 'bg-red-50 text-red-500 group-hover/card:bg-red-500 group-hover/card:text-white'}`}>
-                            {fastApiStatus === 'offline' ? <ServerCrash size={20} /> : <BrainCircuit size={20} />}
+                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-sm flex items-center gap-4">
+                    <div className={`p-4 rounded-2xl ${fastApiStatus === 'online' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                        {fastApiStatus === 'online' ? <BrainCircuit size={24} /> : <ServerCrash size={24} />}
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">AI Engine API</p>
+                        <h3 className={`text-2xl font-bold ${fastApiStatus === 'online' ? 'text-slate-900' : 'text-red-600'}`}>{fastApiStatus === 'online' ? 'Online' : 'Offline'}</h3>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- BARIS 2: 4 KARTU MODEL PERFORMANCE --- */}
+            <div>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4 ml-2 flex items-center gap-2">
+                    Current Model Performance
+                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-200">Real-time</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+
+                    {/* Card 1: Forecast Accuracy */}
+                    <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-all duration-300">
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Target size={20} /></div>
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">Model Precision</span>
                         </div>
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border ${fastApiStatus === 'checking' ? 'bg-slate-50 text-slate-500' : fastApiStatus === 'online' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-red-50 border-red-200 text-red-600 animate-pulse'}`}>
-                            {fastApiStatus === 'checking' ? 'Checking' : fastApiStatus === 'online' ? <><Activity size={10} /> Live</> : 'Terputus'}
-                        </span>
-                    </div>
-                    <div>
-                        <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 transition-colors ${fastApiStatus === 'online' ? 'text-slate-500 group-hover/card:text-emerald-600' : 'text-red-500'}`}>
-                            AI Engine (FastAPI)
-                        </p>
-                        <h3 className={`text-2xl lg:text-3xl font-bold tracking-tight flex items-center gap-2 ${fastApiStatus === 'checking' ? 'text-slate-400' : fastApiStatus === 'online' ? 'text-slate-900' : 'text-red-600'}`}>
-                            {fastApiStatus === 'checking' ? '...' : fastApiStatus === 'online' ? 'Online' : 'Offline'}
-                        </h3>
-                    </div>
-                </div>
-
-                {/* Kartu 4: Current Champion Metrics (DATA ASLI & PALET WARNA SERAGAM) */}
-                <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 hover:shadow-[0_20px_40px_-15px_rgba(79,70,229,0.2)] transition-all duration-300 animate-in fade-in slide-in-from-bottom-6 fill-mode-both delay-400 group/card cursor-default min-h-[160px]">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-3 bg-[#EDF2FE] text-[#6A7BFA] group-hover/card:bg-[#4f46e5] group-hover/card:text-white transition-colors rounded-2xl">
-                            <Target size={20} />
-                        </div>
-                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 border ${fastApiStatus === 'online' && isModelReady ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                            <span className={`w-2 h-2 rounded-full ${fastApiStatus === 'online' && isModelReady ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                            {fastApiStatus === 'online' && isModelReady ? 'Active' : 'Standby'}
-                        </span>
-                    </div>
-                    <div className="flex items-end justify-between border-t border-slate-100 pt-3 mt-auto">
                         <div>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5 group-hover/card:text-[#4f46e5] transition-colors">Akurasi (MAPE)</p>
-                            <div className="flex items-baseline gap-0.5">
-                                <h3 className="text-xl lg:text-2xl font-bold text-slate-900">{fastApiStatus === 'online' && isModelReady ? championMetrics.mape : '---'}</h3>
-                                <span className="text-xs text-slate-400 font-bold">%</span>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Forecast Accuracy</p>
+                            <div className="flex items-baseline gap-1">
+                                <h3 className="text-3xl font-bold text-slate-900 tracking-tight">{mapeValue === 0 ? '--' : forecastAccuracy}</h3>
+                                <span className="text-lg text-slate-400 font-bold">%</span>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">R2 Score</p>
-                            <h3 className="text-xl lg:text-2xl font-bold text-slate-900">{fastApiStatus === 'online' && isModelReady ? championMetrics.r2 : '---'}</h3>
+                    </div>
+
+                    {/* Card 2: MAPE */}
+                    <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-all duration-300">
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="p-3 bg-rose-50 text-rose-500 rounded-2xl"><Percent size={20} /></div>
+                            <span className="text-[10px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-full">Error Rate</span>
                         </div>
-                        <div className="text-right hidden sm:block xl:hidden 2xl:block">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">MAE</p>
-                            <h3 className="text-xl lg:text-2xl font-bold text-slate-900">{fastApiStatus === 'online' && isModelReady ? championMetrics.mae : '---'}</h3>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">MAPE</p>
+                            <div className="flex items-baseline gap-1">
+                                <h3 className="text-3xl font-bold text-slate-900 tracking-tight">{mapeValue === 0 ? '--' : championMetrics.mape}</h3>
+                                <span className="text-lg text-slate-400 font-bold">%</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
+                    {/* Card 3: MAE */}
+                    <div className="bg-white rounded-[32px] p-6 border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-all duration-300">
+                        <div className="flex justify-between items-start mb-6">
+                            <div className="p-3 bg-amber-50 text-amber-500 rounded-2xl"><TrendingDown size={20} /></div>
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">Unit Variance</span>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">MAE</p>
+                            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">{mapeValue === 0 ? '--' : championMetrics.mae}</h3>
+                        </div>
+                    </div>
+
+                    {/* Card 4: Forecast Status (Dinamis sesuai Rule) */}
+                    <div className={`bg-white rounded-[32px] p-6 border shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-all duration-300 ${statusColor.replace('text-', 'border-').replace('bg-', '')}`}>
+                        <div className="flex justify-between items-start mb-6">
+                            <div className={`p-3 rounded-2xl ${statusIconColor}`}><Gauge size={20} /></div>
+                            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 border ${statusColor}`}>
+                                <span className={`w-2 h-2 rounded-full ${statusDot} animate-pulse`}></span>
+                                Evaluated
+                            </span>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Forecast Status</p>
+                            <h3 className={`text-3xl font-black tracking-tight ${statusColor.split(' ')[0]}`}>{statusText}</h3>
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
             {/* --- TABEL DATA --- */}
@@ -228,7 +286,6 @@ export default function DataEngineerDashboard() {
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Invoice Date</th>
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Region</th>
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">State</th>
-                                <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">City</th>
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Product</th>
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Price per Unit</th>
                                 <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Units Sold</th>
@@ -241,11 +298,11 @@ export default function DataEngineerDashboard() {
                         <tbody className="text-sm">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={14} className="p-8 text-center text-slate-500 font-medium animate-pulse">Memuat data historis dari database...</td>
+                                    <td colSpan={13} className="p-8 text-center text-slate-500 font-medium animate-pulse">Memuat data historis dari database...</td>
                                 </tr>
                             ) : recentData.length === 0 ? (
                                 <tr>
-                                    <td colSpan={14} className="p-8 text-center text-slate-500 font-medium">Belum ada data historis yang tersedia. Silakan upload data baru.</td>
+                                    <td colSpan={13} className="p-8 text-center text-slate-500 font-medium">Belum ada data historis yang tersedia. Silakan upload data baru.</td>
                                 </tr>
                             ) : recentData.map((row: any, index: number) => (
                                 <tr key={row.id} className="border-b border-slate-50 hover:bg-[#EDF2FE]/50 transition-colors">
@@ -255,7 +312,6 @@ export default function DataEngineerDashboard() {
                                     <td className="p-4"><span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span></td>
                                     <td className="p-4 text-slate-600">{row.retailer?.region || '-'}</td>
                                     <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || '-'}</td>
-                                    <td className="p-4 text-slate-600">{row.retailer?.city || '-'}</td>
                                     <td className="p-4 font-semibold text-slate-700">{row.product}</td>
                                     <td className="p-4 text-slate-600 font-medium text-right">Rp {row.pricePerUnit?.toLocaleString('id-ID')}</td>
                                     <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{row.unitsSold?.toLocaleString('id-ID')}</td>
