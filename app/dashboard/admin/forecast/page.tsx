@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import ReactECharts from 'echarts-for-react';
-import { BrainCircuit, AlertCircle, Loader2, Info, MapPin, Building2, Store, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, ServerCrash, X, TrendingUp, Mail } from 'lucide-react';
+import { BrainCircuit, AlertCircle, Loader2, Info, MapPin, Store, PackageSearch, Sparkles, ChevronDown, Lightbulb, Clock, TrendingDown, History, CheckCircle2, ChevronUp, Send, ServerCrash, X, TrendingUp, Bell } from 'lucide-react';
 
 export default function AIForecastingPage() {
     const [isLoading, setIsLoading] = useState(true);
@@ -14,19 +14,20 @@ export default function AIForecastingPage() {
 
     // Filter States
     const [filterProv, setFilterProv] = useState('Semua Provinsi');
-    const [filterCity, setFilterCity] = useState('Semua Kota');
-    const [filterRetailer, setFilterRetailer] = useState('Semua Retailer');
+    const [filterRetailerName, setFilterRetailerName] = useState('Semua Retailer');
+    const [filterRetailerId, setFilterRetailerId] = useState('Semua Retailer');
     const [filterProduct, setFilterProduct] = useState('Semua Kategori Produk');
 
     // Data Master Dinamis dari DB
     const [masterStates, setMasterStates] = useState<string[]>([]);
-    const [masterCities, setMasterCities] = useState<{ name: string, provinceName: string }[]>([]);
-    const [masterRetailers, setMasterRetailers] = useState<{ id: string, name: string, cityName: string }[]>([]);
+    const [masterRetailers, setMasterRetailers] = useState<{ id: string, name: string, states: string[] }[]>([]);
     const [masterProducts, setMasterProducts] = useState<string[]>([]);
 
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const [toastMsg, setToastMsg] = useState<{ title: string, desc: string, isAlert: boolean } | null>(null);
-    const [showEmailModal, setShowEmailModal] = useState(false);
+
+    // Ganti nama state modal agar lebih relevan (bukan email lagi)
+    const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
     const filterRef = useRef<HTMLDivElement>(null);
     const [insightTime, setInsightTime] = useState('');
@@ -57,15 +58,17 @@ export default function AIForecastingPage() {
     useEffect(() => {
         const initSystem = async () => {
             try {
+                // 1. Cek Koneksi AI Backend
                 const healthRes = await fetch('http://localhost:8000/api/health');
                 setIsFastApiConnected(healthRes.ok);
 
+                // 2. Tarik Data Master dari Database
                 const locRes = await fetch('/api/admin/locations');
                 const data = await locRes.json();
+
                 setMasterStates(data.states || []);
-                setMasterCities(data.cities || []);
                 setMasterRetailers(data.retailers || []);
-                setMasterProducts(data.products || []); // Produk dinamis
+                setMasterProducts(data.products || []);
             } catch (error) {
                 console.error("Gagal inisialisasi:", error);
             } finally {
@@ -90,17 +93,13 @@ export default function AIForecastingPage() {
         setTimeout(() => setToastMsg(null), 5000);
     }
 
-    const availableCities = filterProv === 'Semua Provinsi'
-        ? masterCities
-        : masterCities.filter(c => c.provinceName.toUpperCase() === filterProv.toUpperCase());
-
-    const availableRetailers = filterCity === 'Semua Kota'
+    const availableRetailers = filterProv === 'Semua Provinsi'
         ? masterRetailers
-        : masterRetailers.filter(r => r.cityName.toUpperCase() === filterCity.toUpperCase());
+        : masterRetailers.filter(r => r.states && r.states.includes(filterProv));
 
     const handleGenerateForecast = async () => {
         if (!isFastApiConnected) {
-            showToast("Server ML Terputus", "Koneksi ke FastAPI gagal. Pastikan uvicorn berjalan.", true);
+            showToast("Server ML Terputus", "Koneksi ke FastAPI gagal. Pastikan engine berjalan.", true);
             return;
         }
 
@@ -112,9 +111,8 @@ export default function AIForecastingPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    province: filterProv,
-                    city: filterCity,
-                    retailer: filterRetailer,
+                    province: filterProv === 'Semua Provinsi' ? "Semua Provinsi" : filterProv,
+                    retailer: filterRetailerId === 'Semua Retailer' ? "Semua Retailer" : filterRetailerId,
                     product: filterProduct
                 })
             });
@@ -127,7 +125,7 @@ export default function AIForecastingPage() {
                 setForecastData(null);
             } else {
                 setForecastData(data);
-                showToast("Analisis Selesai", "Prediksi masa depan dan insight dari AI Gemma siap.", false);
+                showToast("Analisis Selesai", "Prediksi masa depan dan insight dari AKSA AI siap.", false);
             }
 
         } catch (error) {
@@ -139,24 +137,35 @@ export default function AIForecastingPage() {
         }
     };
 
+    // --- LOGIKA PENENTUAN TARGET SCOPE DARI DROPDOWN ---
+    let broadcastScope = 'GLOBAL';
+    let broadcastLabel = 'Seluruh Nasional (Semua Manajer)';
+
+    if (filterProv !== 'Semua Provinsi' && filterRetailerId === 'Semua Retailer') {
+        broadcastScope = `PROVINCE:${filterProv}`;
+        broadcastLabel = `Semua Manajer di Provinsi ${filterProv}`;
+    } else if (filterRetailerId !== 'Semua Retailer') {
+        broadcastScope = `RETAILER:${filterRetailerId}`;
+        broadcastLabel = `Manajer Retailer: ${filterRetailerName} (${filterProv})`;
+    }
+
     const confirmBroadcast = async () => {
         setIsBroadcasting(true);
         try {
-            const targetCabang = filterProv !== 'Semua Provinsi' ? `Manajer Provinsi ${filterProv}` : 'Seluruh Manajer Provinsi Nasional';
-
             const res = await fetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    target: targetCabang,
+                    targetScope: broadcastScope,
+                    target: broadcastLabel,
                     insight: forecastData?.ai_analysis || "Peringatan Anomali Makro Nasional."
                 })
             });
 
             if (res.ok) {
                 await fetchBroadcastHistory();
-                setShowEmailModal(false);
-                showToast("Email & Memo Terkirim!", `Instruksi eksekutif telah di-blast ke ${targetCabang}.`, false);
+                setShowBroadcastModal(false);
+                showToast("Instruksi Terkirim!", `Notifikasi push diteruskan ke ${broadcastLabel}.`, false);
                 setIsHistoryOpen(true);
             } else {
                 showToast("Gagal Terkirim", "Terjadi kesalahan pada server.", true);
@@ -168,22 +177,80 @@ export default function AIForecastingPage() {
         }
     };
 
+    // --- UX: ECHARTS FORECAST DIPERCANTIK ---
     const trendChartOption = forecastData ? {
-        tooltip: { trigger: 'axis', backgroundColor: '#ffffff', borderColor: '#E2E8F0', padding: [12, 16], textStyle: { color: '#0F172A', fontWeight: 'bold' } },
-        legend: { data: ['Histori Aktual', 'Prediksi (AI Forecast)'], bottom: 0, textStyle: { fontWeight: 'bold' } },
-        grid: { left: '3%', right: '4%', bottom: '15%', top: '5%', containLabel: true },
-        xAxis: { type: 'category', boundaryGap: false, data: forecastData.chart.labels, axisLabel: { color: '#64748B', fontWeight: '600' } },
-        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed', color: '#E2E8F0' } }, axisLabel: { color: '#64748B', fontWeight: '600' } },
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderColor: '#E2E8F0',
+            padding: [12, 16],
+            textStyle: { color: '#0F172A', fontSize: 13 },
+            axisPointer: { type: 'line', lineStyle: { color: '#CBD5E1', type: 'dashed' } }
+        },
+        legend: {
+            data: ['Histori Aktual', 'Prediksi (AI Forecast)'],
+            bottom: 0,
+            icon: 'circle',
+            textStyle: { fontWeight: '600', color: '#64748B' }
+        },
+        grid: { left: '3%', right: '4%', bottom: '20%', top: '8%', containLabel: true },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: forecastData.chart.labels,
+            axisLine: { lineStyle: { color: '#E2E8F0' } },
+            axisLabel: {
+                color: '#64748B',
+                fontWeight: '600',
+                margin: 12,
+                interval: 0,
+                rotate: 45,
+                fontSize: 10,
+                lineHeight: 14
+            }
+        },
+        yAxis: {
+            type: 'value',
+            splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } },
+            axisLabel: {
+                color: '#94A3B8',
+                fontWeight: '600',
+                formatter: (val: number) => {
+                    if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
+                    if (val >= 1000) return (val / 1000).toFixed(1) + 'k';
+                    return val;
+                }
+            }
+        },
         series: [
-            { name: 'Histori Aktual', type: 'line', data: forecastData.chart.actual, smooth: true, lineStyle: { width: 3, color: '#94A3B8' }, itemStyle: { color: '#94A3B8' }, symbolSize: 8 },
-            { name: 'Prediksi (AI Forecast)', type: 'line', data: forecastData.chart.predicted, smooth: true, lineStyle: { width: 3, color: '#4f46e5' }, itemStyle: { color: '#4f46e5' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(79, 70, 229, 0.3)' }, { offset: 1, color: 'rgba(79, 70, 229, 0)' }]) }, symbolSize: 8 }
+            {
+                name: 'Histori Aktual',
+                type: 'line',
+                data: forecastData.chart.actual,
+                smooth: 0.4,
+                lineStyle: { width: 3, color: '#94A3B8' },
+                itemStyle: { color: '#94A3B8' },
+                symbolSize: 8,
+                showSymbol: true
+            },
+            {
+                name: 'Prediksi (AI Forecast)',
+                type: 'line',
+                data: forecastData.chart.predicted,
+                smooth: 0.4,
+                lineStyle: { width: 4, color: '#4f46e5', shadowColor: 'rgba(79, 70, 229, 0.3)', shadowBlur: 8, shadowOffsetY: 6 },
+                itemStyle: { color: '#ffffff', borderColor: '#4f46e5', borderWidth: 2 },
+                areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(79, 70, 229, 0.3)' }, { offset: 1, color: 'rgba(79, 70, 229, 0)' }]) },
+                symbolSize: 8,
+                showSymbol: true
+            }
         ]
     } : {};
 
-    if (isLoading) return <div className="w-full h-full flex items-center justify-center text-[#6A7BFA] gap-3"><Loader2 size={24} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Mensinkronisasi dengan Database...</span></div>;
+    if (isLoading) return <div className="w-full h-[80vh] flex flex-col items-center justify-center text-[#4f46e5] gap-4"><Loader2 size={36} className="animate-spin" /><span className="font-bold tracking-widest uppercase text-sm">Mensinkronisasi dengan Database...</span></div>;
 
     return (
-        <div className="pb-10 max-w-7xl mx-auto space-y-6 relative">
+        <div className="pb-10 max-w-7xl mx-auto space-y-6 relative animate-in fade-in">
 
             {/* TOAST NOTIFICATION */}
             {toastMsg && (
@@ -199,45 +266,50 @@ export default function AIForecastingPage() {
                 </div>
             )}
 
-            {/* MODAL EMAIL PREVIEW */}
-            {showEmailModal && (
+            {/* MODAL BROADCAST INTERNAL (PENGGANTI EMAIL) */}
+            {showBroadcastModal && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-100">
                         <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Mail size={18} className="text-[#6A7BFA]" /> Review Email & Memo</h3>
-                            <button onClick={() => setShowEmailModal(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={20} /></button>
+                            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Send size={18} className="text-[#4f46e5]" /> Review Instruksi Dashboard</h3>
+                            <button onClick={() => setShowBroadcastModal(false)} className="text-slate-400 hover:text-red-500 transition-colors"><X size={20} /></button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
-                                <span className="font-semibold text-slate-400">Kepada:</span>
-                                <span className="font-bold text-slate-700">{filterProv !== 'Semua Provinsi' ? `manajer.${filterProv.toLowerCase().replace(/\s/g, '')}@aksa.co.id` : 'all.managers@aksa.co.id'}</span>
-                                <span className="font-semibold text-slate-400">Subjek:</span>
-                                <span className="font-bold text-slate-900">[URGENT] Proyeksi AI & Tindakan Eksekutif - {filterProv}</span>
+                            <div className="grid grid-cols-[80px_1fr] gap-3 text-sm items-center">
+                                <span className="font-semibold text-slate-400">Target:</span>
+                                <span className="font-bold text-[#4f46e5] bg-[#EDF2FE] px-3 py-1.5 rounded-lg w-fit">
+                                    {broadcastLabel}
+                                </span>
+                                <span className="font-semibold text-slate-400">Sistem:</span>
+                                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                                    <Bell size={14} className="text-slate-400" /> Push Notification (In-App)
+                                </span>
                             </div>
-                            <div className="border border-slate-200 rounded-[20px] p-5 bg-slate-50 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                                {`Yth. Tim Manajerial ${filterProv !== 'Semua Provinsi' ? filterProv : 'Nasional'},
+                            <div className="border border-slate-200 rounded-[20px] p-5 bg-slate-50 text-sm text-slate-700 leading-relaxed whitespace-pre-line custom-scrollbar max-h-[300px] overflow-y-auto mt-2">
+                                {`[URGENT] Proyeksi AI & Tindakan Eksekutif
+                                
+Berdasarkan analisis Machine Learning (Random Forest) dan AKSA AI yang dijalankan pada ${insightTime}, kami menemukan proyeksi data sebagai berikut:
 
-Berdasarkan analisis Machine Learning terbaru (Random Forest & Gemma 4) yang dijalankan pada ${insightTime}, kami menemukan proyeksi data sebagai berikut:
+${forecastData?.ai_analysis?.replace(/[*_#]/g, '')}
 
-${forecastData?.ai_analysis}
-
-Mohon segera lakukan penyesuaian operasional berdasarkan rekomendasi di atas. Laporan detail dapat diakses melalui portal Command Center Anda.
+Mohon segera lakukan penyesuaian operasional di wilayah Anda berdasarkan rekomendasi di atas. Laporan dapat diakses melalui portal Anda.
 
 Salam,
 Admin Eksekutif - Aksa Analitika`}
                             </div>
                         </div>
                         <div className="px-6 py-4 bg-white border-t border-slate-100 flex justify-end gap-3">
-                            <button onClick={() => setShowEmailModal(false)} className="px-5 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors">Batal</button>
-                            <button onClick={confirmBroadcast} disabled={isBroadcasting} className="px-6 py-2.5 rounded-full text-sm font-bold bg-[#4f46e5] text-white hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70">
-                                {isBroadcasting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Kirim Sekarang
+                            <button onClick={() => setShowBroadcastModal(false)} className="px-5 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors">Batal</button>
+                            <button onClick={confirmBroadcast} disabled={isBroadcasting} className="px-6 py-2.5 rounded-full text-sm font-bold bg-[#4f46e5] text-white hover:bg-indigo-700 hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-70 active:scale-95">
+                                {isBroadcasting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />} Teruskan ke Cabang
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+            {/* HEADER FORECAST */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <div className="flex items-center gap-3">
                         <h2 className="text-3xl font-bold text-slate-900 tracking-tight">AI Forecasting & Proyeksi</h2>
@@ -247,23 +319,24 @@ Admin Eksekutif - Aksa Analitika`}
                             </span>
                         )}
                     </div>
-                    <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5"><Info size={16} className="text-[#6A7BFA]" /> Analisis proyeksi ke depan dan instruksi eksekutif otomatis.</p>
+                    <p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5"><Info size={16} className="text-[#4f46e5]" /> Analisis proyeksi ke depan dan instruksi eksekutif otomatis.</p>
                 </div>
             </div>
 
-            <div className="bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-100 fill-mode-both relative z-20">
+            {/* PANEL FILTER & KONTROL */}
+            <div className="bg-white rounded-[40px] p-6 lg:p-8 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 relative z-20">
                 <div className="flex flex-col xl:flex-row xl:items-end gap-6">
-                    <div ref={filterRef} className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div ref={filterRef} className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
 
                         {/* FILTER PROVINSI */}
                         <div className={`flex flex-col gap-1.5 relative transition-all ${openDropdown === 'prov' ? 'z-50' : 'z-10'}`}>
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2 flex justify-between">
                                 <span>Level 1: Provinsi</span>
-                                <span className="text-indigo-400">Wajib</span>
+                                <span className="opacity-50">(Opsional)</span>
                             </label>
-                            <button onClick={() => setOpenDropdown(openDropdown === 'prov' ? null : 'prov')} className={`flex items-center justify-between bg-white border ${openDropdown === 'prov' ? 'border-[#4f46e5] ring-4 ring-[#6A7BFA]/10 shadow-sm' : 'border-slate-200 hover:border-[#6A7BFA]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
+                            <button onClick={() => setOpenDropdown(openDropdown === 'prov' ? null : 'prov')} className={`flex items-center justify-between bg-white border ${openDropdown === 'prov' ? 'border-[#4f46e5] ring-4 ring-[#4f46e5]/10 shadow-sm' : 'border-slate-200 hover:border-[#4f46e5]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
                                 <div className="flex items-center gap-2 truncate">
-                                    <MapPin size={16} className="text-[#6A7BFA] group-hover:scale-110 group-hover:text-[#4f46e5] transition-all duration-300" />
+                                    <MapPin size={16} className="text-[#4f46e5] group-hover:scale-110 transition-all duration-300" />
                                     <span className="truncate group-hover:text-[#4f46e5] transition-colors">{filterProv}</span>
                                 </div>
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-all duration-300 ${openDropdown === 'prov' ? 'rotate-180' : ''}`} />
@@ -271,32 +344,14 @@ Admin Eksekutif - Aksa Analitika`}
                             {openDropdown === 'prov' && (
                                 <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-[300px] overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
                                     {['Semua Provinsi', ...masterStates].map((item) => (
-                                        <button key={item} onClick={() => { setFilterProv(item); setFilterCity('Semua Kota'); setFilterRetailer('Semua Retailer'); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterProv === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}>
+                                        <button key={item} onClick={() => {
+                                            setFilterProv(item);
+                                            setFilterRetailerName('Semua Retailer');
+                                            setFilterRetailerId('Semua Retailer');
+                                            setFilterProduct('Semua Kategori Produk');
+                                            setOpenDropdown(null);
+                                        }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterProv === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}>
                                             {item} {filterProv === item && <CheckCircle2 size={16} className="text-white" />}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* FILTER KOTA */}
-                        <div className={`flex flex-col gap-1.5 relative transition-all ${openDropdown === 'city' ? 'z-50' : 'z-10'}`}>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2 flex justify-between">
-                                <span>Level 2: Kota</span>
-                                <span className="opacity-50">(Opsional)</span>
-                            </label>
-                            <button onClick={() => setOpenDropdown(openDropdown === 'city' ? null : 'city')} className={`flex items-center justify-between bg-white border ${openDropdown === 'city' ? 'border-[#4f46e5] ring-4 ring-[#6A7BFA]/10 shadow-sm' : 'border-slate-200 hover:border-[#6A7BFA]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
-                                <div className="flex items-center gap-2 truncate">
-                                    <Building2 size={16} className="text-[#6A7BFA] group-hover:scale-110 group-hover:text-[#4f46e5] transition-all duration-300" />
-                                    <span className="truncate group-hover:text-[#4f46e5] transition-colors">{filterCity}</span>
-                                </div>
-                                <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-all duration-300 ${openDropdown === 'city' ? 'rotate-180' : ''}`} />
-                            </button>
-                            {openDropdown === 'city' && (
-                                <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-[300px] overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
-                                    {['Semua Kota', ...Array.from(new Set(availableCities.map(c => c.name)))].map((item) => (
-                                        <button key={item} onClick={() => { setFilterCity(item); setFilterRetailer('Semua Retailer'); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterCity === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}>
-                                            {item} {filterCity === item && <CheckCircle2 size={16} className="text-white" />}
                                         </button>
                                     ))}
                                 </div>
@@ -306,21 +361,32 @@ Admin Eksekutif - Aksa Analitika`}
                         {/* FILTER RETAILER */}
                         <div className={`flex flex-col gap-1.5 relative transition-all ${openDropdown === 'retailer' ? 'z-50' : 'z-10'}`}>
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-2 flex justify-between">
-                                <span>Level 3: Retailer</span>
+                                <span>Level 2: Retailer</span>
                                 <span className="opacity-50">(Opsional)</span>
                             </label>
-                            <button onClick={() => setOpenDropdown(openDropdown === 'retailer' ? null : 'retailer')} className={`flex items-center justify-between bg-white border ${openDropdown === 'retailer' ? 'border-[#4f46e5] ring-4 ring-[#6A7BFA]/10 shadow-sm' : 'border-slate-200 hover:border-[#6A7BFA]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
+                            <button onClick={() => setOpenDropdown(openDropdown === 'retailer' ? null : 'retailer')} className={`flex items-center justify-between bg-white border ${openDropdown === 'retailer' ? 'border-[#4f46e5] ring-4 ring-[#4f46e5]/10 shadow-sm' : 'border-slate-200 hover:border-[#4f46e5]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
                                 <div className="flex items-center gap-2 truncate">
-                                    <Store size={16} className="text-[#6A7BFA] group-hover:scale-110 group-hover:text-[#4f46e5] transition-all duration-300" />
-                                    <span className="truncate group-hover:text-[#4f46e5] transition-colors">{filterRetailer}</span>
+                                    <Store size={16} className="text-[#4f46e5] group-hover:scale-110 transition-all duration-300" />
+                                    <span className="truncate group-hover:text-[#4f46e5] transition-colors">{filterRetailerName}</span>
                                 </div>
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-all duration-300 ${openDropdown === 'retailer' ? 'rotate-180' : ''}`} />
                             </button>
                             {openDropdown === 'retailer' && (
                                 <div className="absolute top-[calc(100%+8px)] left-0 w-full max-h-[300px] overflow-y-auto custom-scrollbar bg-white border border-slate-100 rounded-[20px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.15)] z-[60] p-2 animate-in fade-in slide-in-from-top-2">
-                                    {['Semua Retailer', ...Array.from(new Set(availableRetailers.map(r => r.name.split(' - ')[0])))].map((item) => (
-                                        <button key={item} onClick={() => { setFilterRetailer(item); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterRetailer === item ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}>
-                                            {item} {filterRetailer === item && <CheckCircle2 size={16} className="text-white" />}
+                                    <button onClick={() => { setFilterRetailerName('Semua Retailer'); setFilterRetailerId('Semua Retailer'); setOpenDropdown(null); }} className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterRetailerId === 'Semua Retailer' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}>
+                                        Semua Retailer {filterRetailerId === 'Semua Retailer' && <CheckCircle2 size={16} className="text-white" />}
+                                    </button>
+                                    {availableRetailers.map((item) => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => {
+                                                setFilterRetailerName(item.name);
+                                                setFilterRetailerId(item.id);
+                                                setOpenDropdown(null);
+                                            }}
+                                            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[12px] text-sm font-bold transition-all duration-200 ${filterRetailerId === item.id ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white' : 'text-slate-600 hover:bg-[#F4F7FE] hover:text-[#4f46e5] hover:translate-x-1'}`}
+                                        >
+                                            {item.name} {filterRetailerId === item.id && <CheckCircle2 size={16} className="text-white" />}
                                         </button>
                                     ))}
                                 </div>
@@ -333,9 +399,9 @@ Admin Eksekutif - Aksa Analitika`}
                                 <span>Spesifik: Produk</span>
                                 <span className="opacity-50">(Opsional)</span>
                             </label>
-                            <button onClick={() => setOpenDropdown(openDropdown === 'product' ? null : 'product')} className={`flex items-center justify-between bg-white border ${openDropdown === 'product' ? 'border-[#4f46e5] ring-4 ring-[#6A7BFA]/10 shadow-sm' : 'border-slate-200 hover:border-[#6A7BFA]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
+                            <button onClick={() => setOpenDropdown(openDropdown === 'product' ? null : 'product')} className={`flex items-center justify-between bg-white border ${openDropdown === 'product' ? 'border-[#4f46e5] ring-4 ring-[#4f46e5]/10 shadow-sm' : 'border-slate-200 hover:border-[#4f46e5]/50 hover:shadow-md hover:-translate-y-0.5'} rounded-[20px] px-4 py-3 text-sm font-bold text-slate-700 transition-all duration-300 group`}>
                                 <div className="flex items-center gap-2 truncate">
-                                    <PackageSearch size={16} className="text-[#6A7BFA] group-hover:scale-110 group-hover:text-[#4f46e5] transition-all duration-300" />
+                                    <PackageSearch size={16} className="text-[#4f46e5] group-hover:scale-110 transition-all duration-300" />
                                     <span className="truncate group-hover:text-[#4f46e5] transition-colors">{filterProduct}</span>
                                 </div>
                                 <ChevronDown size={16} className={`text-slate-400 group-hover:text-[#4f46e5] transition-all duration-300 ${openDropdown === 'product' ? 'rotate-180' : ''}`} />
@@ -364,7 +430,8 @@ Admin Eksekutif - Aksa Analitika`}
                 </div>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col relative overflow-hidden animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out delay-200 fill-mode-both z-10 min-h-[400px]">
+            {/* HASIL FORECAST & INSIGHT */}
+            <div className="bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col relative overflow-hidden z-10 min-h-[400px]">
 
                 {/* SAAT FAST API BELUM TERHUBUNG */}
                 {!forecastData && !isPredicting && (
@@ -397,7 +464,7 @@ Admin Eksekutif - Aksa Analitika`}
                                     )}
                                 </div>
                                 <h3 className="text-2xl font-black text-slate-900 leading-tight">Insight Prediksi: {filterProv}</h3>
-                                <p className="text-sm text-slate-500 mt-1">Dihasilkan oleh model Random Forest & Gemma 4</p>
+                                <p className="text-sm text-slate-500 mt-1">Dihasilkan oleh model Random Forest & AKSA AI</p>
                             </div>
 
                             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100 shrink-0">
@@ -407,7 +474,6 @@ Admin Eksekutif - Aksa Analitika`}
                                 </div>
                                 <div className="w-px h-10 bg-slate-200"></div>
                                 <div>
-                                    {/* PERUBAHAN LABEL DI SINI */}
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Forecast (+4 Minggu)</p>
                                     <p className="text-xl font-black text-[#4f46e5]">{(forecastData.predicted_total || 0).toLocaleString('id-ID')} <span className="text-sm text-slate-500 font-bold">Unit</span></p>
                                 </div>
@@ -415,19 +481,19 @@ Admin Eksekutif - Aksa Analitika`}
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 h-[350px] bg-slate-50 rounded-[32px] p-4 border border-slate-100 relative">
+                            <div className="lg:col-span-2 h-[350px] bg-white rounded-[32px] p-4 border border-slate-100 relative shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                                 <ReactECharts option={trendChartOption} style={{ height: '100%', width: '100%' }} />
                             </div>
 
                             <div className="flex flex-col gap-4">
-                                <div className="flex-1 bg-[#4f46e5] rounded-[32px] p-6 text-white relative overflow-hidden shadow-[0_15px_30px_rgba(79,70,229,0.3)]">
+                                <div className="flex-1 bg-gradient-to-b from-[#6A7BFA] to-[#4f46e5] rounded-[32px] p-6 text-white relative overflow-hidden shadow-[0_15px_30px_rgba(79,70,229,0.3)]">
                                     <BrainCircuit className="absolute -right-4 -bottom-4 w-32 h-32 text-white opacity-10" />
                                     <div className="relative z-10 flex flex-col h-full">
-                                        <div className="flex items-center gap-2 mb-4 opacity-90"><Lightbulb size={20} /><h4 className="font-bold">Analisis Pakar Gemma</h4></div>
+                                        <div className="flex items-center gap-2 mb-4 opacity-90"><Lightbulb size={20} /><h4 className="font-bold">Analisis Pakar AKSA AI</h4></div>
                                         <p className="text-sm leading-relaxed font-medium opacity-95 flex-1 overflow-y-auto custom-scrollbar pr-2 whitespace-pre-line">
-                                            {forecastData.ai_analysis}
+                                            {forecastData.ai_analysis?.replace(/[*_#]/g, '')}
                                         </p>
-                                        <button onClick={() => setShowEmailModal(true)} disabled={isBroadcasting} className="mt-6 w-full bg-white text-[#4f46e5] px-4 py-3 rounded-[16px] text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-95">
+                                        <button onClick={() => setShowBroadcastModal(true)} disabled={isBroadcasting} className="mt-6 w-full bg-white text-[#4f46e5] px-4 py-3 rounded-[16px] text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-95">
                                             <Send size={16} /> Teruskan ke Cabang
                                         </button>
                                     </div>
@@ -445,7 +511,7 @@ Admin Eksekutif - Aksa Analitika`}
                         <div className="p-3 bg-slate-50 text-slate-500 rounded-2xl group-hover:bg-gradient-to-r group-hover:from-[#6A7BFA] group-hover:to-[#4f46e5] group-hover:text-white group-hover:shadow-md transition-all"><History size={24} /></div>
                         <div className="text-left">
                             <h3 className="text-xl font-bold text-slate-900">Riwayat Broadcast Terkirim</h3>
-                            <p className="text-sm text-slate-500 mt-0.5">Catatan instruksi dan peringatan AI yang telah dikirim Admin ke Cabang.</p>
+                            <p className="text-sm text-slate-500 mt-0.5">Catatan instruksi dan peringatan AI yang telah dikirim ke Dashboard Cabang.</p>
                         </div>
                     </div>
                     <div className="p-2 text-slate-400 group-hover:text-[#4f46e5] transition-colors">{isHistoryOpen ? <ChevronUp size={24} /> : <ChevronDown size={24} />}</div>
@@ -454,7 +520,7 @@ Admin Eksekutif - Aksa Analitika`}
                 {isHistoryOpen && (
                     <div className="mt-8 border-t border-slate-100 pt-6 animate-in slide-in-from-top-4 fade-in duration-300">
                         {broadcastHistory.length === 0 ? (
-                            <div className="text-center py-6 text-slate-400 font-medium">Belum ada riwayat broadcast yang dikirim.</div>
+                            <div className="text-center py-6 text-slate-400 font-medium">Belum ada riwayat notifikasi yang dikirim.</div>
                         ) : (
                             <div className="max-h-[380px] overflow-y-auto custom-scrollbar pr-2 space-y-4">
                                 {broadcastHistory.map((item, idx) => (
@@ -464,7 +530,7 @@ Admin Eksekutif - Aksa Analitika`}
                                                 <span className="text-[10px] font-bold text-white bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] px-2.5 py-1 rounded-md shadow-sm">{item.id}</span>
                                                 <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5"><Clock size={12} /> {item.date}</span>
                                             </div>
-                                            <p className="text-sm font-bold text-slate-800 mb-1">Penerima: <span className="text-[#4f46e5]">{item.target}</span></p>
+                                            <p className="text-sm font-bold text-slate-800 mb-1">Target Notifikasi: <span className="text-[#4f46e5]">{item.target}</span></p>
                                             <p className="text-sm font-medium text-slate-600 leading-relaxed max-w-3xl truncate">{item.insight}</p>
                                         </div>
                                         <div className="shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 sm:border-l border-slate-200 sm:pl-5">

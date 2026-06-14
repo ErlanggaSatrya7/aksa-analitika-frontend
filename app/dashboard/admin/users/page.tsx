@@ -9,12 +9,10 @@ interface DBUser {
     role: string;
     status: string;
     assignedState?: string | null;
-    assignedCity?: string | null;
     retailerId?: string | null;
 }
 
-interface CityData { name: string; provinceName: string; }
-interface RetailerData { id: string; name: string; cityName: string; }
+interface RetailerData { id: string; name: string; }
 
 export default function KelolaPenggunaPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -27,15 +25,14 @@ export default function KelolaPenggunaPage() {
     const [isFetchLoading, setIsFetchLoading] = useState(true);
 
     const [masterStates, setMasterStates] = useState<string[]>([]);
-    const [masterCities, setMasterCities] = useState<CityData[]>([]);
     const [masterRetailers, setMasterRetailers] = useState<RetailerData[]>([]);
 
     // STATE MODAL
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    // FORM STATE
-    const [formData, setFormData] = useState({ fullName: '', email: '', role: 'CITY_ADMIN', state: '', city: '', retailer: '' });
+    // FORM STATE (City & Kepala Cabang Dihapus)
+    const [formData, setFormData] = useState({ fullName: '', email: '', role: 'STATE_ADMIN', state: '', retailer: '' });
 
     // CRUD STATE (DETAIL, EDIT, SUSPEND, DELETE)
     const [selectedUser, setSelectedUser] = useState<DBUser | null>(null);
@@ -44,8 +41,8 @@ export default function KelolaPenggunaPage() {
     const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-    // Edit Form sekarang menampung Nama dan Email juga
-    const [editFormData, setEditFormData] = useState({ fullName: '', email: '', role: '', state: '', city: '', retailer: '' });
+    // Edit Form (City Dihapus)
+    const [editFormData, setEditFormData] = useState({ fullName: '', email: '', role: '', state: '', retailer: '' });
 
     const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
@@ -61,7 +58,6 @@ export default function KelolaPenggunaPage() {
             if (resLocations.ok) {
                 const dataLoc = await resLocations.json();
                 setMasterStates(dataLoc.states);
-                setMasterCities(dataLoc.cities);
                 setMasterRetailers(dataLoc.retailers);
             }
         } catch (error) {
@@ -82,19 +78,11 @@ export default function KelolaPenggunaPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // FILTER KOTA & RETAILER
-    const availableCities = masterCities.filter(c => c.provinceName === formData.state);
-    const availableRetailers = masterRetailers.filter(r => r.cityName && formData.city && r.cityName.trim().toLowerCase() === formData.city.trim().toLowerCase());
-
-    const availableEditCities = masterCities.filter(c => c.provinceName === editFormData.state);
-    const availableEditRetailers = masterRetailers.filter(r => r.cityName && editFormData.city && r.cityName.trim().toLowerCase() === editFormData.city.trim().toLowerCase());
-
     const filteredUsers = users.filter(user => {
         const matchSearch = (user.fullName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         let normalizedRole = 'Semua Peran';
         if (user.role === 'SUPER_ADMIN') normalizedRole = 'Super Admin';
         if (user.role === 'STATE_ADMIN') normalizedRole = 'Admin Provinsi';
-        if (user.role === 'CITY_ADMIN') normalizedRole = 'Kepala Cabang';
         if (user.role === 'RETAILER_ADMIN') normalizedRole = 'Manajer Retailer';
         if (user.role === 'DATA_ENGINEER') normalizedRole = 'Data Engineer';
         return matchSearch && (filterRole === 'Semua Peran' || normalizedRole === filterRole);
@@ -103,33 +91,47 @@ export default function KelolaPenggunaPage() {
     const getRoleComponents = (user: DBUser) => {
         if (user.role === 'SUPER_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-purple-100 text-purple-700 text-[11px] font-bold rounded-md"><ShieldCheck size={12} /> Super Admin</span>, scope: 'Nasional (Semua Akses)' };
         if (user.role === 'STATE_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-teal-100 text-teal-700 text-[11px] font-bold rounded-md"><Building2 size={12} /> Admin Provinsi</span>, scope: user.assignedState ? `Provinsi ${user.assignedState}` : 'Provinsi Belum Diatur' };
-        if (user.role === 'CITY_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-blue-100 text-blue-700 text-[11px] font-bold rounded-md"><Building2 size={12} /> Kepala Cabang</span>, scope: user.assignedCity ? `${user.assignedCity} (${user.assignedState || '-'})` : 'Cabang Belum Diatur' };
         if (user.role === 'RETAILER_ADMIN') {
             const foundRetailer = masterRetailers.find(r => r.id === user.retailerId);
-            // PERBAIKAN: Menampilkan nama dan kota retailer secara penuh
-            return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: foundRetailer ? `${foundRetailer.name.toUpperCase()} - ${foundRetailer.cityName.toUpperCase()}` : 'Mitra Toko Belum Diatur' };
+            return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: foundRetailer ? foundRetailer.name.toUpperCase() : 'Mitra Toko Belum Diatur' };
         }
         return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-md"><UserCog size={12} /> Data Engineer</span>, scope: 'Infrastruktur Data' };
     };
 
     // --- FUNGSI API TAMBAH USER ---
     const handleAddUser = async (e: React.FormEvent) => {
-        e.preventDefault(); setIsLoading(true); setToast(null);
+        e.preventDefault();
+        setToast(null);
+
+        if (!formData.email.endsWith('@aksa.com')) {
+            setToast({ type: 'error', message: 'Email harus menggunakan domain perusahaan (@aksa.com)' });
+            return;
+        }
+
+        setIsLoading(true);
         try {
             const res = await fetch('/api/admin/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
             const data = await res.json();
             if (res.ok) {
                 setToast({ type: 'success', message: 'Pengguna baru berhasil ditambahkan! Password default: 123' });
-                setFormData({ fullName: '', email: '', role: 'CITY_ADMIN', state: '', city: '', retailer: '' });
+                setFormData({ fullName: '', email: '', role: 'STATE_ADMIN', state: '', retailer: '' });
                 loadAllData(); setTimeout(() => setIsInviteModalOpen(false), 2200);
             } else setToast({ type: 'error', message: data.error || 'Gagal menambahkan pengguna.' });
         } catch (error) { setToast({ type: 'error', message: 'Terjadi kesalahan sistem.' }); } finally { setIsLoading(false); }
     };
 
-    // --- FUNGSI API UPDATE USER (NAMA, EMAIL, & AKSES) ---
+    // --- FUNGSI API UPDATE USER ---
     const handleUpdateUser = async (e: React.FormEvent) => {
-        e.preventDefault(); if (!selectedUser) return;
-        setIsLoading(true); setToast(null);
+        e.preventDefault();
+        if (!selectedUser) return;
+        setToast(null);
+
+        if (!editFormData.email.endsWith('@aksa.com')) {
+            setToast({ type: 'error', message: 'Email harus menggunakan domain perusahaan (@aksa.com)' });
+            return;
+        }
+
+        setIsLoading(true);
         try {
             const res = await fetch('/api/admin/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUser.id, ...editFormData }) });
             const data = await res.json();
@@ -174,7 +176,6 @@ export default function KelolaPenggunaPage() {
             email: user.email || '',
             role: user.role,
             state: user.assignedState || '',
-            city: user.assignedCity || '',
             retailer: user.retailerId || ''
         });
         setIsEditModalOpen(true); setOpenDropdownId(null);
@@ -184,7 +185,7 @@ export default function KelolaPenggunaPage() {
         <div className="pb-10 max-w-7xl mx-auto space-y-6 relative">
             {/* HEADER */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div><h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">Manajemen Akses</h2><p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">Kontrol otorisasi Kepala Cabang dan Manajer Retailer.</p></div>
+                <div><h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">Manajemen Akses</h2><p className="text-sm text-slate-500 mt-1 flex items-center gap-1.5">Kontrol otorisasi Admin Provinsi dan Manajer Retailer.</p></div>
                 <button onClick={() => setIsInviteModalOpen(true)} className="bg-[#6A7BFA] hover:bg-[#5869E8] text-white px-6 py-3 rounded-[20px] font-bold text-sm transition-all shadow-[0_8px_20px_rgba(106,123,250,0.3)] flex items-center gap-2 active:scale-95"><Plus size={18} /> Tambah Pengguna</button>
             </div>
 
@@ -193,7 +194,7 @@ export default function KelolaPenggunaPage() {
                 <div className="relative flex-1"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Cari nama atau email pengguna..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] pl-12 pr-4 py-3 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 transition-all placeholder:font-medium" /></div>
                 <div ref={filterRef} className="relative w-full sm:w-64">
                     <button onClick={() => setOpenFilter(!openFilter)} className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 hover:border-[#6A7BFA]/50 rounded-[16px] px-5 py-3 text-sm font-bold text-slate-600 transition-all"><div className="flex items-center gap-2"><Filter size={16} className="text-[#6A7BFA]" /> <span className="truncate">{filterRole}</span></div></button>
-                    {openFilter && (<div className="absolute top-[calc(100%+8px)] right-0 w-full bg-white border border-slate-100 rounded-[16px] shadow-xl z-[60] p-2 animate-in fade-in slide-in-from-top-2">{['Semua Peran', 'Super Admin', 'Admin Provinsi', 'Kepala Cabang', 'Manajer Retailer', 'Data Engineer'].map((role) => (<button key={role} onClick={() => { setFilterRole(role); setOpenFilter(false); }} className={`w-full text-left px-4 py-2.5 rounded-[10px] text-sm font-bold transition-colors ${filterRole === role ? 'bg-[#EDF2FE] text-[#6A7BFA]' : 'text-slate-600 hover:bg-slate-50'}`}>{role}</button>))}</div>)}
+                    {openFilter && (<div className="absolute top-[calc(100%+8px)] right-0 w-full bg-white border border-slate-100 rounded-[16px] shadow-xl z-[60] p-2 animate-in fade-in slide-in-from-top-2">{['Semua Peran', 'Super Admin', 'Admin Provinsi', 'Manajer Retailer', 'Data Engineer'].map((role) => (<button key={role} onClick={() => { setFilterRole(role); setOpenFilter(false); }} className={`w-full text-left px-4 py-2.5 rounded-[10px] text-sm font-bold transition-colors ${filterRole === role ? 'bg-[#EDF2FE] text-[#6A7BFA]' : 'text-slate-600 hover:bg-slate-50'}`}>{role}</button>))}</div>)}
                 </div>
             </div>
 
@@ -260,8 +261,9 @@ export default function KelolaPenggunaPage() {
                             <div>
                                 <label className="block text-[13px] font-bold text-slate-700 mb-1.5 ml-1">Tingkat Akses (Role)</label>
                                 <div className="relative">
-                                    <select value={editFormData.role} onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value, state: '', city: '', retailer: '' })} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] px-5 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
-                                        <option value="STATE_ADMIN">Admin Provinsi (State)</option><option value="CITY_ADMIN">Kepala Cabang (City)</option><option value="RETAILER_ADMIN">Manajer Retailer (Store)</option>
+                                    <select value={editFormData.role} onChange={(e) => setEditFormData({ ...editFormData, role: e.target.value, state: '', retailer: '' })} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] px-5 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
+                                        <option value="STATE_ADMIN">Admin Provinsi (State)</option>
+                                        <option value="RETAILER_ADMIN">Manajer Retailer (Store)</option>
                                     </select>
                                     <ChevronDown size={18} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                 </div>
@@ -271,19 +273,13 @@ export default function KelolaPenggunaPage() {
                                 <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
                                 <div>
                                     <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label>
-                                    <div className="relative"><select required value={editFormData.state} onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value, city: '', retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
+                                    <div className="relative"><select required value={editFormData.state} onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
                                 </div>
-                                {(editFormData.role === 'CITY_ADMIN' || editFormData.role === 'RETAILER_ADMIN') && (
-                                    <div>
-                                        <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Kota / Cabang</label>
-                                        <div className="relative"><select required disabled={!editFormData.state} value={editFormData.city} onChange={(e) => setEditFormData({ ...editFormData, city: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Kota...</option>{availableEditCities.map((ct, idx) => <option key={idx} value={ct.name}>{ct.name}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
-                                    </div>
-                                )}
+
                                 {editFormData.role === 'RETAILER_ADMIN' && (
                                     <div>
                                         <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
-                                        {/* PERBAIKAN: Menampilkan nama dan kota dengan huruf kapital agar informatif */}
-                                        <div className="relative"><select required disabled={!editFormData.city} value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">{!editFormData.city ? "Pilih Kota Terlebih Dahulu" : availableEditRetailers.length === 0 ? "Belum ada data toko" : "Pilih Mitra Toko..."}</option>{availableEditRetailers.map((rt) => <option key={rt.id} value={rt.id}>{`${rt.name.toUpperCase()} - ${rt.cityName.toUpperCase()}`}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
+                                        <div className="relative"><select required disabled={!editFormData.state} value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">{!editFormData.state ? "Pilih Provinsi Terlebih Dahulu" : masterRetailers.length === 0 ? "Belum ada data toko" : "Pilih Mitra Toko..."}</option>{masterRetailers.map((rt) => <option key={rt.id} value={rt.id}>{rt.name.toUpperCase()}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
                                     </div>
                                 )}
                             </div>
@@ -361,7 +357,7 @@ export default function KelolaPenggunaPage() {
                 </div>
             )}
 
-            {/* MODAL TAMBAH (INVITE) TETAP ADA UTUH */}
+            {/* MODAL TAMBAH (INVITE) */}
             {isInviteModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl animate-in zoom-in-95 flex flex-col relative border border-slate-100 max-h-[90vh] overflow-y-auto hide-scrollbar-on-mobile">
@@ -373,16 +369,22 @@ export default function KelolaPenggunaPage() {
                             <div><label className="block text-[13px] font-bold text-slate-700 mb-1.5 ml-1">Email Perusahaan</label><input type="email" required placeholder="nama@aksa.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] px-5 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 focus:border-[#6A7BFA] transition-all" /></div>
                             <div>
                                 <label className="block text-[13px] font-bold text-slate-700 mb-1.5 ml-1">Tingkat Akses (Role)</label>
-                                <div className="relative"><select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value, state: '', city: '', retailer: '' })} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] px-5 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 focus:border-[#6A7BFA] transition-all appearance-none cursor-pointer pr-12 font-sans"><option value="STATE_ADMIN">Admin Provinsi (State)</option><option value="CITY_ADMIN">Kepala Cabang (City)</option><option value="RETAILER_ADMIN">Manajer Retailer (Store)</option><option value="DATA_ENGINEER">Data Engineer</option></select><ChevronDown size={18} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
+                                <div className="relative">
+                                    <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value, state: '', retailer: '' })} className="w-full bg-slate-50 border border-slate-200 rounded-[16px] px-5 py-3.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#6A7BFA]/20 focus:border-[#6A7BFA] transition-all appearance-none cursor-pointer pr-12 font-sans">
+                                        <option value="STATE_ADMIN">Admin Provinsi (State)</option>
+                                        <option value="RETAILER_ADMIN">Manajer Retailer (Store)</option>
+                                        <option value="DATA_ENGINEER">Data Engineer</option>
+                                    </select>
+                                    <ChevronDown size={18} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                </div>
                             </div>
                             {formData.role !== 'SUPER_ADMIN' && formData.role !== 'DATA_ENGINEER' && (
                                 <div className="space-y-4 pt-1 p-4 bg-slate-50 rounded-[20px] border border-slate-100 animate-in fade-in slide-in-from-top-3 duration-300">
                                     <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
-                                    <div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label><div className="relative"><select required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value, city: '', retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>
-                                    {(formData.role === 'CITY_ADMIN' || formData.role === 'RETAILER_ADMIN') && (<div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Kota / Cabang</label><div className="relative"><select required disabled={!formData.state} value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12"><option value="">{formData.state ? "Pilih Kota..." : "Pilih Provinsi Terlebih Dahulu"}</option>{availableCities.map((ct, idx) => <option key={ct.name} value={ct.name}>{ct.name}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>)}
+                                    <div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label><div className="relative"><select required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>
+
                                     {formData.role === 'RETAILER_ADMIN' && (<div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
-                                        {/* PERBAIKAN: Menampilkan nama dan kota dengan huruf kapital agar informatif */}
-                                        <div className="relative"><select required disabled={!formData.city} value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12"><option value="">{!formData.city ? "Pilih Kota Terlebih Dahulu" : availableRetailers.length === 0 ? "Belum ada data toko di kota ini" : "Pilih Mitra Toko..."}</option>{availableRetailers.map((rt) => (<option key={rt.id} value={rt.id}>{`${rt.name.toUpperCase()} - ${rt.cityName.toUpperCase()}`}</option>))}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>)}
+                                        <div className="relative"><select required disabled={!formData.state} value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12"><option value="">{!formData.state ? "Pilih Provinsi Terlebih Dahulu" : masterRetailers.length === 0 ? "Belum ada data toko di provinsi ini" : "Pilih Mitra Toko..."}</option>{masterRetailers.map((rt) => (<option key={rt.id} value={rt.id}>{rt.name.toUpperCase()}</option>))}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>)}
                                 </div>
                             )}
                             <div className="bg-blue-50 border border-blue-100 p-3.5 rounded-[16px] flex items-start gap-3"><Lock size={16} className="text-blue-600 shrink-0 mt-0.5" /><p className="text-xs font-semibold text-blue-800 leading-relaxed">Kata sandi awal pengguna baru diset otomatis menjadi <span className="font-bold bg-white px-1.5 py-0.5 rounded border border-blue-200">123</span>.</p></div>

@@ -273,7 +273,7 @@ export default function DatasetCatalogPage() {
                                             </div>
                                         </td>
                                         <td className="p-5 text-right">
-                                            <p className="font-bold text-slate-700">{file.fileSize || 'N/A'}</p>
+                                            <p className="font-bold text-slate-700">{file.fileSize || ""}</p>
                                             <p className="text-[11px] text-slate-400 mt-0.5">{file.totalRows?.toLocaleString('id-ID')} Baris</p>
                                         </td>
                                         <td className="p-5 text-center">
@@ -314,7 +314,7 @@ export default function DatasetCatalogPage() {
                                 <div className="p-2.5 bg-[#EDF2FE] rounded-2xl text-[#4f46e5]"><FileSpreadsheet size={24} /></div>
                                 <div>
                                     <h3 className="font-bold text-xl text-slate-900 leading-tight">Preview Data: <span className="text-[#4f46e5]">{previewFile.fileName}</span></h3>
-                                    <p className="text-xs text-slate-500 mt-0.5">Menampilkan 10 baris pertama dengan struktur penuh 12 kolom aktual dari PostgreSQL.</p>
+                                    <p className="text-xs text-slate-500 mt-0.5">Menampilkan 10 baris pertama dengan struktur penuh aktual dari PostgreSQL.</p>
                                 </div>
                             </div>
                             <button onClick={() => setPreviewFile(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-90"><X size={28} /></button>
@@ -331,6 +331,7 @@ export default function DatasetCatalogPage() {
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Invoice Date</th>
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Region</th>
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">State</th>
+                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">City</th>
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Product</th>
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Price per Unit</th>
                                             <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Units Sold</th>
@@ -342,26 +343,27 @@ export default function DatasetCatalogPage() {
                                     </thead>
                                     <tbody className="text-sm">
                                         {isLoadingPreview ? (
-                                            <tr><td colSpan={13} className="p-12 text-center text-slate-500 animate-pulse font-medium"><Loader2 size={24} className="animate-spin inline-block mr-2" /> Memuat data baris...</td></tr>
+                                            <tr><td colSpan={14} className="p-12 text-center text-slate-500 animate-pulse font-medium"><Loader2 size={24} className="animate-spin inline-block mr-2" /> Memuat data baris...</td></tr>
                                         ) : previewData.length > 0 ? previewData.map((row, index) => (
                                             <tr key={row.id} className="border-b border-slate-50 hover:bg-[#EDF2FE]/30 transition-colors">
                                                 <td className="p-4 pl-6 font-bold text-slate-400">{index + 1}</td>
-                                                <td className="p-4 font-semibold text-slate-900">{row.retailer?.name || '-'}</td>
-                                                <td className="p-4 text-slate-500 font-mono text-[10px]">{row.retailerId || '-'}</td>
-                                                <td className="p-4"><span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span></td>
-                                                <td className="p-4 text-slate-600">{row.retailer?.region || '-'}</td>
-                                                <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || '-'}</td>
-                                                <td className="p-4 font-semibold text-slate-700">{row.product || '-'}</td>
+                                                <td className="p-4 font-semibold text-slate-900">{row.retailer?.name || ""}</td>
+                                                <td className="p-4 text-slate-500 font-mono text-[10px]">{row.retailerId || ""}</td>
+                                                <td className="p-4">{row.invoiceDate ? <span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span> : ""}</td>
+                                                <td className="p-4 text-slate-600">{row.retailer?.region || row.region || ""}</td>
+                                                <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || row.state || ""}</td>
+                                                <td className="p-4 text-slate-600 font-medium">{row.retailer?.city || row.city || ""}</td>
+                                                <td className="p-4 font-semibold text-slate-700">{row.product || ""}</td>
                                                 <td className="p-4 text-slate-600 font-medium text-right">Rp {Number(row.pricePerUnit || 0).toLocaleString('id-ID')}</td>
                                                 <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{Number(row.unitsSold || 0).toLocaleString('id-ID')}</td>
                                                 <td className="p-4 text-emerald-600 font-bold text-right">Rp {Number(row.totalSales || 0).toLocaleString('id-ID')}</td>
                                                 <td className="p-4 text-[#4f46e5] font-bold text-right bg-[#EDF2FE]/30">Rp {Number(row.operatingProfit || 0).toLocaleString('id-ID')}</td>
                                                 <td className="p-4 text-amber-600 font-bold text-right">{(Number(row.operatingMargin || 0) * 100).toFixed(0)}%</td>
-                                                <td className="p-4 pr-6 text-slate-500 text-xs">{row.salesMethod || '-'}</td>
+                                                <td className="p-4 pr-6 text-slate-500 text-xs">{row.salesMethod || ""}</td>
                                             </tr>
                                         )) : (
                                             <tr>
-                                                <td colSpan={13} className="p-12 text-center text-slate-500 font-medium">Data kosong atau tidak ditemukan.</td>
+                                                <td colSpan={14} className="p-12 text-center text-slate-500 font-medium">Data kosong atau tidak ditemukan.</td>
                                             </tr>
                                         )}
                                     </tbody>

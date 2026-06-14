@@ -5,15 +5,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        // ============================================================================
-        // TAHAP 1: AGREGASI DI LEVEL DATABASE
-        // ============================================================================
-
         const [
             summaryAgg,
             stateAgg,
             productAgg,
-            methodAgg,
+            methodAgg, // Prisma otomatis mengenali ini sebagai array
             rawRetailerShare
         ] = await Promise.all([
             prisma.sales_data.aggregate({
@@ -31,21 +27,18 @@ export async function GET() {
                 orderBy: { _sum: { unitsSold: 'desc' } },
                 take: 5
             }),
+            // TAMBAHKAN 'as any' ATAU 'as unknown as ...' JIKA TS MASIH KOMPLAIN
             prisma.sales_data.groupBy({
                 by: ['salesMethod'],
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } }
-            }),
+            }) as any,
             prisma.sales_data.groupBy({
                 by: ['retailerId'],
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } }
             })
         ]);
-
-        // ============================================================================
-        // TAHAP 2: GROUPING RETAILER (MENGGABUNGKAN CABANG & ID JADI 6 BRAND UTAMA)
-        // ============================================================================
 
         const retailerIds = rawRetailerShare.map(r => r.retailerId);
         const retailersMaster = await prisma.retailers.findMany({
@@ -55,67 +48,76 @@ export async function GET() {
 
         const consolidatedMap = new Map<string, number>();
 
+        // Tambahkan Kamus ini di dalam fungsi GET sebelum melakukan forEach
+        const retailerMap: Record<string, string> = {
+            "1000001": "Adidas Official Store",
+            "1000002": "Matahari",
+            "1000003": "Planet Sports",
+            "1000004": "Ramayana",
+            "1000005": "Sports Station",
+            "1000006": "Transmart"
+        };
+
         rawRetailerShare.forEach(item => {
-            const detail = retailersMaster.find(r => r.id === item.retailerId);
+            // 1. Ambil ID mentah (jika ada format "1000001_BANTEN_...")
+            const rawId = item.retailerId.split('_')[0];
 
-            // Ambil data mentah (bisa berupa "MATAHARI - BALI" atau "1000002")
-            const rawName = (detail?.name || item.retailerId).toUpperCase();
+            // 2. Tentukan nama: Cek di Kamus > Cek DB > Default ke ID
+            const detail = retailersMaster.find(r => r.id === rawId);
+            const finalBrandName = retailerMap[rawId] || detail?.name || `Retailer ${rawId}`;
 
-            let finalName = "Lainnya";
-
-            // LOGIKA FILTERING KETAT: Apapun cabangnya, kumpulkan ke Brand Utamanya
-            if (rawName.includes("ADIDAS") || rawName.includes("1000001")) {
-                finalName = "ADIDAS OFFICIAL STORE";
-            } else if (rawName.includes("MATAHARI") || rawName.includes("1000002")) {
-                finalName = "MATAHARI";
-            } else if (rawName.includes("PLANET SPORTS") || rawName.includes("PLANETSPORT") || rawName.includes("1000003")) {
-                finalName = "PLANET SPORTS";
-            } else if (rawName.includes("RAMAYANA") || rawName.includes("1000004")) {
-                finalName = "RAMAYANA";
-            } else if (rawName.includes("SPORTS STATION") || rawName.includes("SPORTSTATION") || rawName.includes("1000005")) {
-                finalName = "SPORTS STATION";
-            } else if (rawName.includes("TRANSMART") || rawName.includes("1000006")) {
-                finalName = "TRANSMART";
-            } else {
-                finalName = rawName; // Fallback untuk berjaga-jaga
-            }
-
-            // Jumlahkan total unit terjualnya
-            const currentTotal = consolidatedMap.get(finalName) || 0;
-            consolidatedMap.set(finalName, currentTotal + Number(item._sum.unitsSold || 0));
+            // 3. Masukkan ke map
+            const currentTotal = consolidatedMap.get(finalBrandName) || 0;
+            consolidatedMap.set(finalBrandName, currentTotal + Number(item._sum.unitsSold || 0));
         });
 
-        // Hasil akhir pasti akan mengelompok rapi maksimal 6-7 item
+
         const retailerShare = Array.from(consolidatedMap.entries())
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value);
 
-        // ============================================================================
-        // TAHAP 3: TREND BULANAN (PAKSA TAMPIL 12 BULAN Penuh)
-        // ============================================================================
+        const dateRange = await prisma.sales_data.aggregate({
+            _min: { invoiceDate: true },
+            _max: { invoiceDate: true }
+        });
 
         const datesData = await prisma.sales_data.findMany({
             select: { invoiceDate: true, unitsSold: true }
         });
 
+        const labels: string[] = [];
+        const values: number[] = [];
         const trendMap = new Map<string, number>();
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
 
-        datesData.forEach(row => {
-            if (row.invoiceDate) {
-                const date = new Date(row.invoiceDate);
-                const monthKey = monthNames[date.getMonth()];
-                trendMap.set(monthKey, (trendMap.get(monthKey) || 0) + row.unitsSold);
+        if (dateRange._min.invoiceDate && dateRange._max.invoiceDate) {
+            let currentDate = new Date(dateRange._min.invoiceDate);
+            currentDate.setDate(1);
+
+            const endDate = new Date(dateRange._max.invoiceDate);
+            endDate.setDate(1);
+
+            while (currentDate <= endDate) {
+                const monthKey = `${monthNames[currentDate.getMonth()]} '${currentDate.getFullYear().toString().slice(-2)}`;
+                labels.push(monthKey);
+                trendMap.set(monthKey, 0);
+                currentDate.setMonth(currentDate.getMonth() + 1);
             }
-        });
 
-        // Pastikan array selalu berisi 12 bulan berurutan
-        const labels = monthNames;
-        const values = monthNames.map(month => trendMap.get(month) || 0);
+            datesData.forEach(row => {
+                if (row.invoiceDate) {
+                    const date = new Date(row.invoiceDate);
+                    const monthKey = `${monthNames[date.getMonth()]} '${date.getFullYear().toString().slice(-2)}`;
+                    if (trendMap.has(monthKey)) {
+                        trendMap.set(monthKey, trendMap.get(monthKey)! + Number(row.unitsSold || 0));
+                    }
+                }
+            });
 
-        // ============================================================================
-        // TAHAP 4: FORMATTING DATA UNTUK ECHARTS FRONTEND
-        // ============================================================================
+            labels.forEach(label => {
+                values.push(trendMap.get(label) || 0);
+            });
+        }
 
         const maxStateValue = stateAgg.length > 0 ? Number(stateAgg[0]._sum.unitsSold || 1) : 1;
 
@@ -142,7 +144,11 @@ export async function GET() {
             mapDistribution,
             topProvinces,
             trendLine: { labels, values },
-            salesMethod: methodAgg.map(m => ({ name: m.salesMethod, value: Number(m._sum.unitsSold || 0) })),
+            // salesMethod: methodAgg.map(m => ({ name: m.salesMethod, value: Number(m._sum.unitsSold || 0) })),
+            salesMethod: methodAgg.map((m: any) => ({
+                name: m.salesMethod,
+                value: Number(m._sum.unitsSold || 0)
+            })),
             topProducts: productAgg.map(p => ({ name: p.product, value: Number(p._sum.unitsSold || 0) })),
             retailerShare
         }, { status: 200 });

@@ -2,20 +2,27 @@
 import React, { useState, useEffect } from 'react';
 import {
     Database, BrainCircuit, Loader2, FileX, Trash2, ShieldAlert,
-    Terminal, Activity, CheckCircle2, Sparkles, XCircle, TrendingUp, TrendingDown, Clock, Layers
+    Terminal, Activity, CheckCircle2, Sparkles, XCircle, TrendingUp, TrendingDown, Clock, Layers, Circle
 } from 'lucide-react';
 
 export default function HistoryPage() {
     const [historyData, setHistoryData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Fitur Hapus
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Radar AI Latar Belakang
     const [aiStatus, setAiStatus] = useState<'idle' | 'running'>('idle');
     const [currentAiFile, setCurrentAiFile] = useState('');
+    const [currentStep, setCurrentStep] = useState(-1);
+
+    const pipelineStages = [
+        { title: "Dataset Validation", desc: "Validating file structure, columns, and missing values." },
+        { title: "Data Engineering", desc: "Cleaning, transforming, and synchronizing to PostgreSQL." },
+        { title: "Model Training", desc: "Loading production model & training new Random Forest candidate." },
+        { title: "Model Evaluation", desc: "Cross-validation and benchmarking R², MAE, MAPE." },
+        { title: "Deployment Decision", desc: "Comparing metrics to determine production deployment." }
+    ];
 
     const fetchHistory = async () => {
         setIsLoading(true);
@@ -32,7 +39,6 @@ export default function HistoryPage() {
         }
     };
 
-    // Radar Pemantau FastAPI
     useEffect(() => {
         fetchHistory();
 
@@ -44,23 +50,25 @@ export default function HistoryPage() {
                     if (data.pipeline_running) {
                         setAiStatus('running');
                         setCurrentAiFile(data.current_file);
+                        setCurrentStep(data.current_step);
                     } else {
                         if (aiStatus === 'running') fetchHistory();
                         setAiStatus('idle');
                         setCurrentAiFile('');
+                        setCurrentStep(-1);
                     }
                 }
             } catch (error) {
                 setAiStatus('idle');
+                setCurrentStep(-1);
             }
         };
 
         checkAiPipeline();
-        const interval = setInterval(checkAiPipeline, 3000);
+        const interval = setInterval(checkAiPipeline, 1500);
         return () => clearInterval(interval);
     }, [aiStatus]);
 
-    // FUNGSI CHECKBOX
     const handleSelectAll = () => {
         if (selectedIds.length === historyData.length) setSelectedIds([]);
         else setSelectedIds(historyData.map(h => h.id));
@@ -71,7 +79,6 @@ export default function HistoryPage() {
         else setSelectedIds([...selectedIds, id]);
     };
 
-    // FUNGSI HAPUS HISTORY
     const handleDeleteHistory = async () => {
         if (!confirm("Yakin ingin membersihkan riwayat ini? Data riwayat tidak bisa dikembalikan.")) return;
 
@@ -94,15 +101,32 @@ export default function HistoryPage() {
         }
     };
 
-    // Fungsi Pembantu: Mengekstrak durasi dari teks "Catatan MLOps"
     const extractDuration = (notes: string) => {
         const match = notes.match(/Durasi:\s*(\d+\s*detik)/i);
         return match ? match[1] : '-';
     };
 
+    // --- FUNGSI BARU UNTUK UI BEFORE/AFTER ---
+    const extractMetrics = (notes: string) => {
+        try {
+            if (!notes || !notes.includes("vs Cand")) return null;
+            const parts = notes.split('|')[1];
+            const prodPart = parts.split('vs')[0];
+            const candPart = parts.split('vs')[1];
+
+            return {
+                prodR2: prodPart.split('R2:')[1].split(',')[0].trim(),
+                prodMape: prodPart.split('MAPE:')[1].replace('%)', '%').trim(),
+                candR2: candPart.split('R2:')[1].split(',')[0].trim(),
+                candMape: candPart.split('MAPE:')[1].replace('%)', '%').trim(),
+            };
+        } catch (e) {
+            return null;
+        }
+    };
+
     return (
         <div className="pb-10 max-w-7xl mx-auto space-y-8">
-            {/* --- HERO BANNER --- */}
             <div className="bg-white rounded-[32px] p-8 lg:p-10 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-slate-100 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-indigo-50 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
                 <div className="relative z-10">
@@ -127,13 +151,12 @@ export default function HistoryPage() {
             </div>
 
             <div className="space-y-6">
-                {/* LIVE AI RADAR SECTION */}
                 {aiStatus === 'running' && (
                     <div className="bg-slate-900 rounded-[32px] border border-slate-800 shadow-[0_8px_30px_rgba(0,0,0,0.15)] p-6 lg:p-8 animate-in zoom-in-95 duration-500 relative overflow-hidden">
                         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-[#4f46e5] rounded-full blur-[80px] opacity-30 animate-pulse" />
-                        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                            <div className="flex items-center gap-5">
-                                <div className="relative">
+                        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+                            <div className="flex items-start gap-5">
+                                <div className="relative shrink-0">
                                     <div className="w-14 h-14 bg-slate-800 text-[#6A7BFA] rounded-2xl flex items-center justify-center border border-slate-700 shadow-inner">
                                         <Terminal size={28} />
                                     </div>
@@ -146,22 +169,36 @@ export default function HistoryPage() {
                                     <h3 className="font-bold text-xl text-white flex items-center gap-2">
                                         AI Engine Sedang Bekerja <Loader2 size={18} className="animate-spin text-[#6A7BFA]" />
                                     </h3>
-                                    <p className="text-sm text-slate-400 mt-1">
-                                        Memproses <strong className="text-emerald-400 font-mono">{currentAiFile}</strong> di latar belakang.
+                                    <p className="text-sm text-slate-400 mt-1 max-w-sm leading-relaxed">
+                                        Memproses <strong className="text-emerald-400 font-mono">{currentAiFile}</strong> di latar belakang sistem.
                                     </p>
                                 </div>
                             </div>
-                            <div className="bg-slate-800/50 border border-slate-700 px-6 py-4 rounded-2xl w-full md:w-auto">
-                                <ul className="text-xs font-mono text-slate-300 space-y-2">
-                                    <li className="flex items-center gap-2"><CheckCircle2 size={14} className="text-emerald-500" /> [TAHAP 1] Ingesti Data Database</li>
-                                    <li className="flex items-center gap-2"><Activity size={14} className="text-[#6A7BFA] animate-pulse" /> [TAHAP 2] Evaluasi Metrik Model Baru...</li>
+
+                            <div className="bg-slate-800/80 border border-slate-700 px-6 py-5 rounded-2xl w-full lg:w-[480px]">
+                                <ul className="text-xs font-mono space-y-3">
+                                    {pipelineStages.map((stage, idx) => {
+                                        const isCompleted = currentStep > idx;
+                                        const isActive = currentStep === idx;
+
+                                        return (
+                                            <li key={idx} className={`flex items-start gap-3 transition-colors duration-300 ${isActive ? 'text-[#6A7BFA]' : isCompleted ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                                {isCompleted ? <CheckCircle2 size={16} className="shrink-0 mt-0.5" /> :
+                                                    isActive ? <Loader2 size={16} className="shrink-0 mt-0.5 animate-spin" /> :
+                                                        <Circle size={16} className="shrink-0 mt-0.5 opacity-50" />}
+                                                <div>
+                                                    <span className={`font-bold ${isActive && 'animate-pulse'}`}>[TAHAP {idx + 1}] {stage.title}</span>
+                                                    {isActive && <p className="text-[10px] text-slate-400 mt-1 normal-case leading-relaxed">{stage.desc}</p>}
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* HISTORY TIMELINE / CARDS SECTION */}
                 <div className="flex items-center gap-3 mb-4 mt-8 ml-2">
                     <div className="p-2 rounded-xl bg-[#EDF2FE] text-[#4f46e5]"><ShieldAlert size={20} /></div>
                     <h3 className="text-xl font-bold text-slate-900">Deployment Log</h3>
@@ -179,7 +216,6 @@ export default function HistoryPage() {
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        {/* HEADER CHECKBOX BULK ACTIONS */}
                         <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-2xl border border-slate-200 shadow-sm w-fit">
                             <input type="checkbox" checked={selectedIds.length === historyData.length && historyData.length > 0} onChange={handleSelectAll} className="w-4 h-4 text-[#4f46e5] bg-white border-slate-300 rounded cursor-pointer" />
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Pilih Semua</span>
@@ -192,26 +228,25 @@ export default function HistoryPage() {
                             const isDeleted = item.action === 'DELETE';
                             const duration = extractDuration(item.notes || '');
 
-                            // Visual Status configuration
+                            // --- IMPLEMENTASI LOGIKA UI METRIK ---
+                            const metrics = extractMetrics(item.notes || '');
+
                             let badgeColor = isDeleted ? 'bg-red-50 text-red-600 border-red-200' : isAccepted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200';
                             let icon = isDeleted ? <Trash2 size={16} /> : isAccepted ? <CheckCircle2 size={16} /> : <XCircle size={16} />;
                             let statusTitle = isDeleted ? 'Data Dihapus' : isAccepted ? 'Model Accepted & Deployed' : 'Model Rejected';
                             let statusDesc = isDeleted ? 'Dataset beserta log terhapus dari sistem.' : isAccepted ? 'Model baru di-deploy ke production karena memiliki akurasi yang lebih baik.' : 'Model production saat ini tetap aktif karena model baru tidak lebih baik.';
 
-                            // Highlight baris pertama (terbaru) jika dia adalah model yang diterima
                             const isActiveModel = index === 0 && isAccepted && !isDeleted;
 
                             return (
                                 <div key={item.id} className={`bg-white rounded-[32px] border ${isActiveModel ? 'border-[#6A7BFA] shadow-[0_8px_30px_rgba(79,70,229,0.1)]' : 'border-slate-100 shadow-sm'} overflow-hidden transition-all duration-300 hover:shadow-md flex flex-col md:flex-row relative`}>
 
-                                    {/* Active Badge Marker */}
                                     {isActiveModel && (
                                         <div className="absolute top-0 right-0 bg-[#6A7BFA] text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl z-10 flex items-center gap-1.5 shadow-sm">
                                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse"></span> ACTIVE MODEL
                                         </div>
                                     )}
 
-                                    {/* LEFT PANEL: INFO DATASET & WAKTU */}
                                     <div className="bg-slate-50/50 p-6 lg:p-8 w-full md:w-1/3 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col justify-between shrink-0">
                                         <div>
                                             <div className="flex items-center gap-3 mb-4">
@@ -239,8 +274,7 @@ export default function HistoryPage() {
                                         </div>
                                     </div>
 
-                                    {/* RIGHT PANEL: METRIK & KEPUTUSAN */}
-                                    <div className="p-6 lg:p-8 w-full md:w-2/3 flex flex-col justify-between bg-white">
+                                    <div className="p-6 lg:p-8 w-full md:w-2/3 flex flex-col justify-center bg-white">
                                         {!isDeleted ? (
                                             <>
                                                 <div className="mb-6">
@@ -256,15 +290,47 @@ export default function HistoryPage() {
                                                     </div>
                                                 </div>
 
-                                                {/* FALLBACK UI UNTUK CATATAN MLOPS (Sampai API di-update dengan metrik JSON) */}
-                                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
-                                                    <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                                        <BrainCircuit size={14} /> Log Evaluasi Mesin
-                                                    </h5>
-                                                    <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap leading-relaxed">
-                                                        {item.notes || 'Evaluasi diselesaikan tanpa catatan spesifik.'}
-                                                    </pre>
-                                                </div>
+                                                {/* --- RENDER METRIK BEFORE/AFTER --- */}
+                                                {metrics ? (
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                                        <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 relative">
+                                                            <span className="text-[10px] font-bold bg-white text-slate-500 px-3 py-1 rounded-md uppercase tracking-widest border border-slate-200 absolute -top-3 left-4">Production Model</span>
+                                                            <div className="flex justify-between items-end mt-3">
+                                                                <div>
+                                                                    <p className="text-xs text-slate-400 font-bold mb-1">R² Score</p>
+                                                                    <p className="font-bold text-xl text-slate-700">{metrics.prodR2}</p>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <p className="text-xs text-slate-400 font-bold mb-1">MAPE</p>
+                                                                    <p className="font-bold text-xl text-slate-700">{metrics.prodMape}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className={`border rounded-2xl p-5 relative ${isAccepted ? 'bg-emerald-50/50 border-emerald-200' : 'bg-amber-50/50 border-amber-200'}`}>
+                                                            <span className={`text-[10px] font-bold bg-white px-3 py-1 rounded-md uppercase tracking-widest border absolute -top-3 left-4 ${isAccepted ? 'text-emerald-600 border-emerald-200' : 'text-amber-600 border-amber-200'}`}>Candidate Model</span>
+                                                            <div className="flex justify-between items-end mt-3">
+                                                                <div>
+                                                                    <p className="text-xs text-slate-400 font-bold mb-1">R² Score</p>
+                                                                    <p className={`font-bold text-xl ${isAccepted ? 'text-emerald-600' : 'text-amber-600'}`}>{metrics.candR2}</p>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <p className="text-xs text-slate-400 font-bold mb-1">MAPE</p>
+                                                                    <p className={`font-bold text-xl ${isAccepted ? 'text-emerald-600' : 'text-amber-600'}`}>{metrics.candMape}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
+                                                        <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                            <BrainCircuit size={14} /> Log Evaluasi Mesin
+                                                        </h5>
+                                                        <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                                            {item.notes || 'Evaluasi diselesaikan tanpa catatan spesifik.'}
+                                                        </pre>
+                                                    </div>
+                                                )}
                                             </>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center h-full text-center py-6">

@@ -8,8 +8,8 @@ datasource db {
 }
 
 model users {
-  id            String        @id @default(uuid())
-  email         String        @unique
+  id            String          @id @default(uuid())
+  email         String          @unique
   fullName      String
   role          Role
   assignedState String?
@@ -27,7 +27,7 @@ model retailers {
   name              String
   region            String
   state             String
-  city              String
+  city              String?             // <--- Dibuat Opsional (Bisa Kosong)
   logistic_requests logistic_requests[]
   sales_data        sales_data[]
   users             users[]
@@ -54,7 +54,7 @@ model sales_data {
   
   region          String           
   state           String           
-  city            String           
+  city            String?          // <--- Dibuat Opsional (Bisa Kosong)
   
   product         String
   pricePerUnit    Float

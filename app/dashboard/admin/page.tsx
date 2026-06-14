@@ -7,19 +7,16 @@ import Link from 'next/link';
 
 export default function RingkasanNasional() {
     const [isLoading, setIsLoading] = useState(true);
-    // STATE PENJAGA: Mencegah Echarts Crash (Hanya true jika map berhasil diregister)
     const [isMapLoaded, setIsMapLoaded] = useState(false);
 
     const [activeTrendTab, setActiveTrendTab] = useState<'trend' | 'channel'>('trend');
     const [activePortoTab, setActivePortoTab] = useState<'produk' | 'retailer'>('produk');
     const [dashboardData, setDashboardData] = useState<any>(null);
 
-    // STATE KONEKSI AI & DATABASE
     const [fastApiStatus, setFastApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
     const [dbLatency, setDbLatency] = useState<number>(0);
 
     useEffect(() => {
-        // Fungsi khusus untuk mengambil GeoJSON dengan aman
         const fetchMapData = async () => {
             try {
                 const res = await fetch('/indonesia.geojson');
@@ -46,7 +43,6 @@ export default function RingkasanNasional() {
             }
         };
 
-        // Fungsi cek mesin AI (Gemma & RF)
         const checkSystemHealth = async () => {
             try {
                 const res = await fetch('http://localhost:8000/api/health');
@@ -57,10 +53,8 @@ export default function RingkasanNasional() {
             }
         };
 
-        // Eksekusi janji paralel
         Promise.all([fetchMapData(), fetchDashboardData()])
             .then(([mapData, dbData]) => {
-                // 1. DAFTARKAN PETA (Hanya jika file GeoJSON valid)
                 if (mapData && mapData.features) {
                     const geojsonNameTranslator: Record<string, string> = {
                         "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
@@ -87,19 +81,16 @@ export default function RingkasanNasional() {
                         feature.properties.Propinsi = pName;
                     });
 
-                    // HARUS SAMA dengan properti "map" di opsi Echarts nanti
                     echarts.registerMap('indonesia_nasional', mapData);
-                    setIsMapLoaded(true); // Izinkan peta untuk dirender
+                    setIsMapLoaded(true);
                 }
 
-                // 2. SIMPAN DATA API
                 setDashboardData(dbData);
                 setIsLoading(false);
             });
 
-        // Cek status AI langsung & pasang interval
         checkSystemHealth();
-        const interval = setInterval(checkSystemHealth, 15000); // Polling setiap 15 detik
+        const interval = setInterval(checkSystemHealth, 15000);
         return () => clearInterval(interval);
     }, []);
 
@@ -115,7 +106,7 @@ export default function RingkasanNasional() {
         series: [{
             name: 'Volume Provinsi',
             type: 'map',
-            map: 'indonesia_nasional', // PASTIKAN SAMA DENGAN NAMA DI REGISTER MAP
+            map: 'indonesia_nasional',
             nameProperty: 'Propinsi',
             roam: true,
             label: { show: false },
@@ -125,9 +116,6 @@ export default function RingkasanNasional() {
         }]
     };
 
-    // ==========================================
-    // UPDATE: GRAFIK TREND BULANAN LEBIH TEGAS & JELAS
-    // ==========================================
     const trendChartOption = {
         tooltip: {
             trigger: 'axis',
@@ -136,10 +124,7 @@ export default function RingkasanNasional() {
             borderColor: '#E2E8F0',
             padding: [12, 16],
             textStyle: { color: '#0F172A', fontSize: 13 },
-            axisPointer: {
-                type: 'line',
-                lineStyle: { color: '#CBD5E1', width: 1, type: 'dashed' }
-            },
+            axisPointer: { type: 'line', lineStyle: { color: '#CBD5E1', width: 1, type: 'dashed' } },
             formatter: (params: any) => {
                 const val = params[0].value ? params[0].value.toLocaleString('id-ID') : 0;
                 return `
@@ -151,13 +136,21 @@ export default function RingkasanNasional() {
                 `;
             }
         },
-        grid: { left: '2%', right: '5%', bottom: '5%', top: '15%', containLabel: true },
+        grid: { left: '2%', right: '5%', bottom: '15%', top: '15%', containLabel: true }, // RUANG BAWAH DIPERBESAR
         xAxis: {
             type: 'category',
             boundaryGap: false,
             data: dashboardData?.trendLine?.labels || [],
             axisLine: { lineStyle: { color: '#E2E8F0' } },
-            axisLabel: { color: '#64748B', fontWeight: '600', margin: 12 },
+            axisLabel: {
+                color: '#64748B',
+                fontWeight: '600',
+                margin: 12,
+                interval: 0,           // Mencegah ada bulan yang diloncati
+                hideOverlap: false,    // Mencegah Echarts menyembunyikan label otomatis
+                rotate: 45,            // Dimiringkan agar rapi
+                fontSize: 10
+            },
             axisTick: { show: false }
         },
         yAxis: {
@@ -178,37 +171,29 @@ export default function RingkasanNasional() {
             type: 'line',
             smooth: 0.4,
             symbol: 'circle',
-            symbolSize: 8, // Ukuran titik
-            showSymbol: true, // TITIK SEKARANG SELALU MUNCUL (TIDAK PERLU HOVER)
+            symbolSize: 8,
+            showSymbol: true,
             label: {
-                show: true, // LABEL ANGKA SELALU TAMPIL
+                show: true,
                 position: 'top',
                 color: '#4f46e5',
                 fontWeight: 'bold',
                 fontSize: 11,
                 formatter: (params: any) => {
                     let val = params.value;
+                    if (val === 0) return ''; // Sembunyikan label jika 0 agar bersih
                     if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
                     if (val >= 1000) return (val / 1000).toFixed(0) + 'k';
                     return val;
                 }
             },
-            itemStyle: {
-                color: '#ffffff', // Warna dalam titik putih
-                borderColor: '#4f46e5', // Warna garis pinggir titik biru
-                borderWidth: 2,
-                shadowColor: 'rgba(79, 70, 229, 0.4)',
-                shadowBlur: 4
-            },
+            itemStyle: { color: '#ffffff', borderColor: '#4f46e5', borderWidth: 2, shadowColor: 'rgba(79, 70, 229, 0.4)', shadowBlur: 4 },
             lineStyle: {
                 width: 4,
                 color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                    { offset: 0, color: '#A3B1FF' },
-                    { offset: 1, color: '#4f46e5' }
+                    { offset: 0, color: '#A3B1FF' }, { offset: 1, color: '#4f46e5' }
                 ]),
-                shadowColor: 'rgba(79, 70, 229, 0.3)',
-                shadowBlur: 8,
-                shadowOffsetY: 6
+                shadowColor: 'rgba(79, 70, 229, 0.3)', shadowBlur: 8, shadowOffsetY: 6
             },
             areaStyle: {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -223,7 +208,8 @@ export default function RingkasanNasional() {
 
     const channelChartOption = {
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        grid: { left: '2%', right: '15%', bottom: '5%', top: '10%', containLabel: true },
+        // grid: { left: '2%', right: '15%', bottom: '5%', top: '10%', containLabel: true },    
+        grid: { left: '2%', right: '5%', bottom: '20%', top: '15%', containLabel: true },
         xAxis: { type: 'value', show: false },
         yAxis: { type: 'category', data: dashboardData?.salesMethod?.map((d: any) => d.name) || [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { fontWeight: '700', color: '#475569' } },
         series: [{ name: 'Unit Terjual', type: 'bar', barWidth: '45%', data: dashboardData?.salesMethod?.map((d: any, i: number) => ({ value: d.value, itemStyle: { color: i === 0 ? '#4f46e5' : i === 1 ? '#6A7BFA' : '#A3B1FF', borderRadius: [0, 6, 6, 0] } })) || [], label: { show: true, position: 'right', formatter: '{c}', fontWeight: 'bold' } }]
@@ -241,38 +227,15 @@ export default function RingkasanNasional() {
         tooltip: {
             trigger: 'item',
             formatter: '<div style="font-weight:bold; margin-bottom:4px;">{b}</div><div style="color:#6A7BFA; font-weight:bold;">{c} Unit ({d}%)</div>',
-            backgroundColor: '#ffffff',
-            borderWidth: 1,
-            borderColor: '#E2E8F0',
-            padding: [10, 14]
+            backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#E2E8F0', padding: [10, 14]
         },
-        legend: {
-            type: 'scroll',
-            bottom: '0%',
-            left: 'center',
-            icon: 'circle',
-            itemGap: 15,
-            textStyle: { color: '#475569', fontWeight: '500', fontSize: 11 }
-        },
+        legend: { type: 'scroll', bottom: '0%', left: 'center', icon: 'circle', itemGap: 15, textStyle: { color: '#475569', fontWeight: '500', fontSize: 11 } },
         series: [{
-            name: 'Retailer',
-            type: 'pie',
-            radius: ['35%', '60%'],
-            center: ['50%', '42%'],
-            avoidLabelOverlap: true,
+            name: 'Retailer', type: 'pie', radius: ['35%', '60%'], center: ['50%', '42%'], avoidLabelOverlap: true,
             itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 3 },
-            label: {
-                show: true,
-                formatter: '{b}\n{d}%',
-                fontWeight: 'bold',
-                fontSize: 10,
-                color: '#475569'
-            },
+            label: { show: true, formatter: '{b}\n{d}%', fontWeight: 'bold', fontSize: 10, color: '#475569' },
             labelLine: { show: true, length: 10, length2: 10 },
-            data: dashboardData?.retailerShare?.map((d: any) => ({
-                name: d.name || d.retailer || 'Unknown Retailer',
-                value: d.value || d.units || d.total || 0
-            })) || []
+            data: dashboardData?.retailerShare?.map((d: any) => ({ name: d.name || d.retailer || 'Unknown Retailer', value: d.value || d.units || d.total || 0 })) || []
         }]
     };
 
@@ -294,7 +257,6 @@ export default function RingkasanNasional() {
             {/* 4 KARTU METRIK & STATUS AI */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
 
-                {/* Kartu 1: Total Penjualan */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><ShoppingCart size={24} /></div>
@@ -305,7 +267,6 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
-                {/* Kartu 2: Margin */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Percent size={24} /></div>
@@ -316,7 +277,6 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
-                {/* Kartu 3: Total Pendapatan */}
                 <div className="bg-white rounded-[32px] p-6 lg:p-8 border border-slate-100 flex flex-col justify-between transition-all duration-300 hover:-translate-y-1 shadow-[0_8px_30px_rgba(0,0,0,0.03)] group">
                     <div className="flex justify-between items-start mb-6">
                         <div className="p-3.5 bg-[#EDF2FE] text-[#6A7BFA] rounded-2xl group-hover:scale-110 group-hover:bg-[#4f46e5] group-hover:text-white transition-all"><Package size={24} /></div>
@@ -327,7 +287,6 @@ export default function RingkasanNasional() {
                     </div>
                 </div>
 
-                {/* Kartu 4: Status Gemma AI & Server */}
                 <div className={`bg-white rounded-[32px] p-6 lg:p-8 border shadow-[0_8px_30px_rgba(0,0,0,0.03)] flex flex-col justify-between hover:-translate-y-1 transition-all duration-300 group/card ${fastApiStatus === 'online' ? 'hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] border-slate-100' : 'hover:shadow-[0_20px_40px_-15px_rgba(239,68,68,0.2)] border-red-100'}`}>
                     <div className="flex justify-between items-start mb-6">
                         <div className={`p-3.5 rounded-2xl transition-colors ${fastApiStatus === 'checking' ? 'bg-slate-100 text-slate-400' : fastApiStatus === 'online' ? 'bg-emerald-50 text-emerald-600 group-hover/card:bg-emerald-500 group-hover/card:text-white' : 'bg-red-50 text-red-500 group-hover/card:bg-red-500 group-hover/card:text-white'}`}>
@@ -339,7 +298,7 @@ export default function RingkasanNasional() {
                     </div>
                     <div>
                         <p className={`text-[11px] lg:text-xs font-bold uppercase tracking-widest mb-1.5 transition-colors ${fastApiStatus === 'online' ? 'text-slate-500 group-hover/card:text-emerald-600' : 'text-red-500'}`}>
-                            Gemma AI & MLOps
+                            AKSA AI & MLOps
                         </p>
                         <h3 className={`text-3xl lg:text-4xl font-bold tracking-tight ${fastApiStatus === 'checking' ? 'text-slate-400' : fastApiStatus === 'online' ? 'text-slate-900' : 'text-red-600'}`}>
                             {fastApiStatus === 'checking' ? '...' : fastApiStatus === 'online' ? 'Online' : 'Offline'}
@@ -357,7 +316,6 @@ export default function RingkasanNasional() {
                         <div><h3 className="text-xl font-bold text-slate-900">Sebaran Penjualan Unit</h3><p className="text-slate-500 text-xs mt-0.5">Performa wilayah aktual berdasar letak geografis</p></div>
                     </div>
 
-                    {/* GUARD ECHARTS: PETA HANYA MUNCUL JIKA JSON SUDAH TER-LOAD */}
                     <div className="w-full h-[400px] relative z-10 rounded-[24px] bg-[#F8FAFC] border border-slate-100 overflow-hidden flex items-center justify-center">
                         {isMapLoaded ? (
                             <ReactECharts option={miniMapOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />

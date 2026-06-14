@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { Inbox, CheckCircle2, XCircle, Send, MapPin, AlertTriangle, Clock, Check, Plus, Loader2 } from 'lucide-react';
+import { Inbox, CheckCircle2, XCircle, MapPin, Clock, Check, Loader2 } from 'lucide-react';
 
 // Mendefinisikan tipe data sesuai database Supabase (Prisma)
 interface LogisticRequest {
@@ -17,9 +17,7 @@ interface LogisticRequest {
 }
 
 export default function AdminInboxPage() {
-    const [activeTab, setActiveTab] = useState('masuk');
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
-
     const [isLoading, setIsLoading] = useState(true);
     const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
     const [inboxItems, setInboxItems] = useState<LogisticRequest[]>([]);
@@ -104,6 +102,7 @@ export default function AdminInboxPage() {
     return (
         <div className="pb-10 max-w-6xl mx-auto animate-in fade-in duration-500 relative">
 
+            {/* TOAST NOTIFICATION */}
             {toast && (
                 <div className={`fixed top-24 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-2xl flex items-center gap-3 z-[100] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                     {toast.type === 'success' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
@@ -111,31 +110,25 @@ export default function AdminInboxPage() {
                 </div>
             )}
 
+            {/* HEADER */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
                     <h2 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Command Center</h2>
-                    <p className="text-xs md:text-sm text-slate-500 mt-1">Kelola perizinan Provinsi dan broadcast kebijakan skala Nasional.</p>
+                    <p className="text-xs md:text-sm text-slate-500 mt-1">Kelola dan tinjau permohonan logistik masuk dari manajer cabang.</p>
                 </div>
-                <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white px-6 py-3.5 rounded-full font-bold text-sm shadow-[0_8px_20px_rgba(79,70,229,0.3)] hover:shadow-lg transition-all active:scale-95">
-                    <Plus size={18} /> Buat Memo Baru
-                </button>
             </div>
 
+            {/* INBOX CONTAINER */}
             <div className="bg-white border border-slate-100 rounded-[32px] md:rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] overflow-hidden min-h-[500px] flex flex-col">
-                <div className="flex border-b border-slate-100 px-6 md:px-8 pt-6 gap-6">
-                    <button onClick={() => setActiveTab('masuk')} className={`pb-4 text-sm font-bold transition-all border-b-2 ${activeTab === 'masuk' ? 'border-[#4f46e5] text-[#4f46e5]' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                        <div className="flex items-center gap-2">
-                            <Inbox size={18} /> Kotak Masuk
-                            <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full leading-none shadow-sm">
-                                {inboxItems.filter(i => i.status.includes('PENDING')).length}
-                            </span>
-                        </div>
-                    </button>
-                    <button onClick={() => setActiveTab('terkirim')} className={`pb-4 text-sm font-bold transition-all border-b-2 ${activeTab === 'terkirim' ? 'border-[#4f46e5] text-[#4f46e5]' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                        <div className="flex items-center gap-2">
-                            <Send size={18} /> Memo Terkirim
-                        </div>
-                    </button>
+                <div className="px-6 md:px-8 pt-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-white z-10">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                        <Inbox size={18} className="text-[#4f46e5]" /> Permohonan Logistik Masuk
+                    </h3>
+                    {inboxItems.filter(i => i.status.includes('PENDING')).length > 0 && (
+                        <span className="bg-red-50 text-red-600 border border-red-200 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest shadow-sm">
+                            {inboxItems.filter(i => i.status.includes('PENDING')).length} Menunggu
+                        </span>
+                    )}
                 </div>
 
                 <div className="p-6 md:p-8 flex-1 bg-slate-50/50">
@@ -144,7 +137,7 @@ export default function AdminInboxPage() {
                             <Loader2 size={32} className="animate-spin" />
                             <span className="font-bold text-sm">Menyinkronkan Database...</span>
                         </div>
-                    ) : activeTab === 'masuk' && (
+                    ) : (
                         <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4">
                             {inboxItems.length === 0 ? (
                                 <div className="text-center py-10 text-slate-400 font-medium">Tidak ada permohonan logistik masuk.</div>
@@ -174,7 +167,7 @@ export default function AdminInboxPage() {
                                             </div>
                                         </div>
 
-                                        {/* HANYA MUNCUL JIKA STATUS PENDING */}
+                                        {/* ACTION BUTTONS (HANYA MUNCUL JIKA STATUS PENDING) */}
                                         {item.status.includes('PENDING') && (
                                             <div className="flex items-center gap-2 mt-4 md:mt-0 pt-4 md:pt-0 border-t border-slate-100 md:border-none shrink-0 w-full md:w-auto">
                                                 <button onClick={() => handleReject(item.id)} disabled={isActionLoading === item.id} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-500 font-bold text-xs hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-50">
@@ -188,16 +181,6 @@ export default function AdminInboxPage() {
                                     </div>
                                 </div>
                             ))}
-                        </div>
-                    )}
-
-                    {activeTab === 'terkirim' && (
-                        <div className="flex flex-col items-center justify-center h-64 animate-in fade-in">
-                            <div className="w-16 h-16 bg-slate-100 text-slate-300 rounded-full flex items-center justify-center mb-4">
-                                <Send size={28} className="ml-1" />
-                            </div>
-                            <h4 className="text-lg font-bold text-slate-700">Belum ada Memo terkirim</h4>
-                            <p className="text-sm text-slate-500 mt-1">Kebijakan yang Anda broadcast ke tabel Notifications akan muncul di sini.</p>
                         </div>
                     )}
                 </div>

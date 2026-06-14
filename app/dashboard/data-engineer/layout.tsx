@@ -6,7 +6,8 @@ import { useSession, signOut } from 'next-auth/react';
 import {
     CloudUpload, History, LogOut, Database, Menu, X,
     LayoutDashboard, User, Settings, BellRing, ShieldCheck,
-    AlertTriangle, FolderOpen, CheckCircle2, Bot, Send, Activity, ServerCrash
+    AlertTriangle, FolderOpen, CheckCircle2, Bot, Send, Activity,
+    ServerCrash, MessagesSquare, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function DataEngineerLayout({ children }: { children: React.ReactNode }) {
@@ -23,11 +24,10 @@ export default function DataEngineerLayout({ children }: { children: React.React
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-    // --- STATE POP-UP DIAGNOSTIK SISTEM ---
     const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
     const [systemStatus, setSystemStatus] = useState({
-        fastApi: 'checking', // checking | online | offline
-        supabase: 'checking' // checking | online | offline
+        fastApi: 'checking',
+        supabase: 'checking'
     });
 
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -36,20 +36,30 @@ export default function DataEngineerLayout({ children }: { children: React.React
     const [isAiTyping, setIsAiTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    const [showAllPrompts, setShowAllPrompts] = useState(false);
+
     const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
     const [currentDate, setCurrentDate] = useState('Memuat...');
     const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
+
+    // === DATA ENGINEER QUICK PROMPTS (PERTANYAAN SANTAI) ===
+    const dataEngineerPrompts = [
+        "Ada berapa total baris data di database sekarang?",
+        "Berapa skor metrik (R2, MAPE, MAE) model saat ini?",
+        "Apakah ada error pada proses upload data terakhir?",
+        "Bagaimana cara sistem menghapus data kotor jika error (rollback)?",
+        "Tolong jelaskan 5 tahapan AI Pipeline di sistem ini."
+    ];
 
     const showToast = (message: string, type: 'success' | 'warning') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 4000);
     };
 
-    // Auto-scroll ke bawah saat ada pesan baru di chat
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [chatMessages, isAiTyping, isChatOpen]);
+    }, [chatMessages, isAiTyping, isChatOpen, showAllPrompts]);
 
     useEffect(() => {
         const now = new Date();
@@ -65,7 +75,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
         setCurrentLocation(user?.assignedProvince ? `${user.assignedProvince}, ID` : 'HQ Pusat, ID');
     }, [user?.assignedProvince]);
 
-    // --- LOGIKA DIAGNOSTIK INFRASTRUKTUR ---
     useEffect(() => {
         const runSystemDiagnostic = async () => {
             setIsSystemModalOpen(true);
@@ -75,16 +84,12 @@ export default function DataEngineerLayout({ children }: { children: React.React
             try {
                 const resApi = await fetch('http://localhost:8000/api/health');
                 if (resApi.ok) apiState = 'online';
-            } catch (error) {
-                apiState = 'offline';
-            }
+            } catch (error) { apiState = 'offline'; }
 
             try {
                 const resDb = await fetch('/api/data-engineer/dashboard');
                 if (resDb.ok) dbState = 'online';
-            } catch (error) {
-                dbState = 'offline';
-            }
+            } catch (error) { dbState = 'offline'; }
 
             setSystemStatus({ fastApi: apiState, supabase: dbState });
         };
@@ -97,9 +102,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
 
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
-    // =====================================================================
-    // FUNGSI PEMBERSIH SIMBOL TEXT (Menghilangkan * # $ / dll)
-    // =====================================================================
     const cleanAiResponse = (text: string) => {
         if (!text) return "";
         let cleanedText = text.replace(/[*#$/\\_~`>]/g, '');
@@ -107,22 +109,23 @@ export default function DataEngineerLayout({ children }: { children: React.React
         return cleanedText;
     };
 
-    // --- LOGIKA AI CHATBOT ---
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!chatInput.trim()) return;
+    const handleSendMessage = async (e?: React.FormEvent, directMessage?: string) => {
+        if (e) e.preventDefault();
 
-        const userMessage = chatInput.trim();
-        setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+        const messageToSend = directMessage || chatInput.trim();
+        if (!messageToSend) return;
+
+        setChatMessages(prev => [...prev, { role: 'user', text: messageToSend }]);
         setChatInput('');
         setIsAiTyping(true);
+        setShowAllPrompts(false);
 
         try {
             const response = await fetch('http://localhost:8000/api/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    message: userMessage,
+                    message: messageToSend,
                     user_context: user?.name || "Pengguna",
                     user_role: user?.role || "DATA_ENGINEER",
                     assigned_state: user?.assignedProvince || "",
@@ -135,23 +138,23 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 const sanitizedReply = cleanAiResponse(data.reply);
                 setChatMessages(prev => [...prev, { role: 'ai', text: sanitizedReply }]);
             } else {
-                setChatMessages(prev => [...prev, { role: 'ai', text: "Maaf, gagal memproses respons AI (Error 500)." }]);
+                setChatMessages(prev => [...prev, { role: 'ai', text: `Gagal memproses API. HTTP Status: ${response.status}` }]);
             }
         } catch (error) {
-            setChatMessages(prev => [...prev, { role: 'ai', text: "Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
+            setChatMessages(prev => [...prev, { role: 'ai', text: "Koneksi ke FastAPI terputus atau server API OpenRouter sedang down/sibuk. Silakan coba beberapa saat lagi." }]);
         } finally {
             setIsAiTyping(false);
         }
     };
 
-    // --- VARIABEL STATUS UNTUK TOP BAR ---
     const isSystemOnline = systemStatus.fastApi === 'online' && systemStatus.supabase === 'online';
     const isSystemChecking = systemStatus.fastApi === 'checking' || systemStatus.supabase === 'checking';
+
+    const visiblePrompts = showAllPrompts ? dataEngineerPrompts : dataEngineerPrompts.slice(0, 3);
 
     return (
         <div className="flex h-[100dvh] w-full bg-[#F4F7FE] overflow-hidden font-sans text-slate-600 relative">
 
-            {/* --- TOAST NOTIFICATION UI --- */}
             {toast && (
                 <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[100] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertTriangle size={20} className="shrink-0" />}
@@ -159,7 +162,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 </div>
             )}
 
-            {/* --- POP-UP MODAL DIAGNOSTIK SISTEM --- */}
             {isSystemModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[130] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center border border-slate-100">
@@ -212,7 +214,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 </div>
             )}
 
-            {/* MODAL KONFIRMASI LOGOUT */}
             {isLogoutModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="bg-white rounded-[32px] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center text-center border border-slate-100">
@@ -235,13 +236,11 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 </div>
             )}
 
-            {/* OVERLAY MOBILE SIDEBAR */}
             <div
                 className={`fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] lg:hidden transition-opacity duration-300 ease-in-out ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
-            {/* SIDEBAR */}
             <aside className={`fixed lg:relative top-0 left-0 h-[100dvh] w-[280px] bg-[#ffffff] flex flex-col py-6 px-5 z-[100] rounded-r-[32px] lg:rounded-none lg:rounded-br-[40px] lg:border-r lg:border-slate-100 shadow-[20px_0_40px_rgba(0,0,0,0.1)] lg:shadow-none transform transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
                 <div className="flex items-center justify-between mb-8 px-3 shrink-0">
                     <div className="flex items-center gap-3">
@@ -297,7 +296,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
             {/* MAIN CONTENT AREA */}
             <div className="flex-1 h-full overflow-y-auto relative custom-scrollbar bg-[#F4F7FE]" onScroll={handleScroll}>
 
-                {/* HEADER */}
                 <header className={`sticky top-0 z-[70] w-full transition-all duration-300 rounded-b-[32px] lg:rounded-b-none lg:rounded-br-[40px] ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)]' : 'bg-white/80 backdrop-blur-md border-b border-slate-200/50'}`}>
                     <div className="flex lg:hidden items-center justify-between px-4 sm:px-6 h-[72px]">
                         <button className="w-10 h-10 flex items-center justify-center bg-white border border-slate-100 shadow-sm text-slate-700 hover:text-[#6A7BFA] hover:bg-[#EDF2FE] hover:border-[#EDF2FE] rounded-2xl transition-all active:scale-95" onClick={() => setIsMobileMenuOpen(true)}>
@@ -311,7 +309,7 @@ export default function DataEngineerLayout({ children }: { children: React.React
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
+                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! `}
                             </h2>
                             <p className="text-xs font-medium text-slate-500 mt-1">Pusat Ingesti Data & Pipeline ETL</p>
                         </div>
@@ -321,7 +319,6 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                 <p className="text-xs font-semibold text-slate-600">{currentLocation}</p>
                             </div>
 
-                            {/* --- INDIKATOR STATUS SISTEM DINAMIS --- */}
                             <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold shadow-sm cursor-help transition-all duration-300 ${isSystemChecking ? 'bg-amber-50 border border-amber-100 text-amber-700' :
                                 isSystemOnline ? 'bg-emerald-50 border border-emerald-100 text-emerald-700' :
                                     'bg-red-50 border border-red-100 text-red-700'
@@ -343,8 +340,8 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 {/* AI CHATBOT KHUSUS ENGINEER */}
                 <div className="fixed bottom-6 right-4 sm:right-6 lg:bottom-10 lg:right-10 z-[80] flex flex-col items-end">
                     {isChatOpen && (
-                        <div className="bg-white w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
-                            <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
+                        <div className="bg-white w-[calc(100vw-32px)] sm:w-[360px] lg:w-[420px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[500px] lg:h-[580px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                            <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0 z-20">
                                 <div className="flex items-center gap-3">
                                     <Bot size={24} />
                                     <span className="font-bold text-base tracking-tight">AKSA COPILOT</span>
@@ -352,10 +349,12 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                 <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar flex flex-col">
+                            {/* Area Chat Utama */}
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm flex flex-col">
                                 <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium self-start">
                                     Status server terhubung. Saya AKSA COPILOT, ada yang bisa saya bantu hari ini, {firstName}?
                                 </div>
+
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                                         <div className={`p-4 max-w-[85%] shadow-sm leading-relaxed font-medium ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>
@@ -375,7 +374,31 @@ export default function DataEngineerLayout({ children }: { children: React.React
                                 <div ref={messagesEndRef} />
                             </div>
 
-                            <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 shrink-0">
+                            {/* --- UX: WRAPPED QUICK PROMPTS (EXPANDABLE) --- */}
+                            <div className="bg-slate-50/80 border-t border-slate-200 p-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] z-10 transition-all duration-300">
+                                <div className="flex items-center justify-between ml-1 mb-3">
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><MessagesSquare size={14} /> Prompt Operasional:</p>
+                                    <button
+                                        onClick={() => setShowAllPrompts(!showAllPrompts)}
+                                        className="text-[10px] font-bold text-[#4f46e5] flex items-center gap-1 hover:underline active:scale-95"
+                                    >
+                                        {showAllPrompts ? <><ChevronUp size={12} /> Sembunyikan</> : <><ChevronDown size={12} /> Lihat Semua ({dataEngineerPrompts.length})</>}
+                                    </button>
+                                </div>
+                                <div className={`flex flex-wrap gap-2 transition-all duration-300 overflow-y-auto custom-scrollbar ${showAllPrompts ? 'max-h-40' : 'max-h-20'}`}>
+                                    {visiblePrompts.map((prompt, index) => (
+                                        <button
+                                            key={index}
+                                            onClick={() => handleSendMessage(undefined, prompt)}
+                                            className="text-left bg-white hover:bg-[#EDF2FE] text-[#4f46e5] px-4 py-2 rounded-2xl text-[11px] font-bold transition-all border border-slate-200 hover:border-[#6A7BFA] shadow-sm active:scale-95"
+                                        >
+                                            {prompt}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 shrink-0 z-20">
                                 <input
                                     type="text"
                                     value={chatInput}
@@ -399,6 +422,23 @@ export default function DataEngineerLayout({ children }: { children: React.React
                 __html: `
                 .hide-scrollbar-on-mobile::-webkit-scrollbar { display: none; }
                 .hide-scrollbar-on-mobile { -ms-overflow-style: none; scrollbar-width: none; }
+                
+                /* Custom Scrollbar for Vertical Prompts */
+                .custom-scrollbar::-webkit-scrollbar {
+                    height: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: #f1f5f9; 
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #94a3b8; 
+                    border-radius: 10px;
+                    border: 2px solid #f1f5f9;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #64748b; 
+                }
             `}} />
         </div>
     );

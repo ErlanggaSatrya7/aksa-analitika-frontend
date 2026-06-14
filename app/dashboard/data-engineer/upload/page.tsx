@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     CloudUpload, FileSpreadsheet, CheckCircle2, Loader2, XCircle, Trash2,
     BrainCircuit, ServerCrash, Database, Timer, Sparkles, Circle, Check,
-    Activity, ArrowRight, TrendingUp, TrendingDown
+    Activity, ArrowRight, TrendingUp, TrendingDown, RefreshCcw
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
@@ -16,24 +16,22 @@ export default function UploadDatasetPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
 
-    // STATE DIAGNOSTIK INFRASTRUKTUR
     const [systemStatus, setSystemStatus] = useState({
         isChecking: true,
         isApiOnline: false,
         isDbOnline: false
     });
 
-    // STATUS UPLOAD & PIPELINE
     const [uploadState, setUploadState] = useState<'idle' | 'previewing' | 'processing' | 'completed' | 'error'>('idle');
     const [errorMessage, setErrorMessage] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [displayData, setDisplayData] = useState<any[]>([]);
 
-    // MLOPS PIPELINE SIMULATION STATE
     const [uploadStats, setUploadStats] = useState({ fileName: '', totalRows: 0, startTime: new Date(), fileSize: 0 });
     const [elapsedTime, setElapsedTime] = useState(0);
     const [currentStep, setCurrentStep] = useState(0);
     const [pipelineDecision, setPipelineDecision] = useState<'ACCEPTED' | 'REJECTED'>('ACCEPTED');
+    const [metricsData, setMetricsData] = useState<any>(null);
 
     const formatTime = (totalSeconds: number) => {
         const m = Math.floor((totalSeconds % 3600) / 60);
@@ -63,24 +61,45 @@ export default function UploadDatasetPage() {
         const checkInfrastructure = async () => {
             let apiOnline = false;
             let dbOnline = false;
-            let pipelineIsRunning = false;
-            let serverElapsed = 0;
-            let lastStatus = '';
-            let lastError = '';
 
             try {
                 const resApi = await fetch('http://localhost:8000/api/health');
                 if (resApi.ok) {
                     apiOnline = true;
                     const data = await resApi.json();
+
                     if (data.pipeline_running) {
-                        pipelineIsRunning = true;
-                        serverElapsed = data.elapsed_seconds || 0;
+                        if (uploadState !== 'processing') {
+                            setUploadState('processing');
+                            setUploadStats(prev => ({ ...prev, fileName: data.current_file || 'Background Process' }));
+                        }
+                        setElapsedTime(data.elapsed_seconds || 0);
+                        setCurrentStep(data.current_step);
+
+                        if (data.training_logs && data.training_logs.decision) {
+                            setMetricsData(data.training_logs);
+                        }
+                    } else if (!data.pipeline_running && uploadState === 'processing') {
+                        if (data.last_status === 'error' || data.last_status === 'GAGAL') {
+                            setErrorMessage(data.last_error || 'Proses digagalkan oleh MLOps Engine (Error Internal).');
+                            setUploadState('error');
+                        } else {
+                            if (metricsData) {
+                                setPipelineDecision(metricsData.decision);
+                            } else {
+                                setPipelineDecision(data.last_status?.includes('TOLAK') ? 'REJECTED' : 'ACCEPTED');
+                            }
+                            setCurrentStep(5);
+                            setTimeout(() => setUploadState('completed'), 500);
+                        }
                     }
-                    lastStatus = data.last_status;
-                    lastError = data.last_error;
                 }
-            } catch (error) { }
+            } catch (error) {
+                if (uploadState === 'processing') {
+                    setErrorMessage("Koneksi ke AI Engine terputus secara tiba-tiba. Pastikan server berjalan.");
+                    setUploadState('error');
+                }
+            }
 
             try {
                 const resDb = await fetch('/api/data-engineer/dashboard');
@@ -88,31 +107,10 @@ export default function UploadDatasetPage() {
             } catch (error) { }
 
             setSystemStatus({ isChecking: false, isApiOnline: apiOnline, isDbOnline: dbOnline });
-
-            if (pipelineIsRunning && uploadState !== 'completed' && uploadState !== 'error') {
-                if (uploadState !== 'processing') setUploadState('processing');
-                setElapsedTime(serverElapsed);
-
-                if (serverElapsed < 5) setCurrentStep(0);
-                else if (serverElapsed < 12) setCurrentStep(1);
-                else if (serverElapsed < 25) setCurrentStep(2);
-                else if (serverElapsed < 32) setCurrentStep(3);
-                else setCurrentStep(4);
-
-            } else if (!pipelineIsRunning && uploadState === 'processing') {
-                if (lastStatus === 'error') {
-                    setErrorMessage(lastError || 'Proses digagalkan oleh MLOps Engine (Error Internal).');
-                    setUploadState('error');
-                } else {
-                    setPipelineDecision(lastStatus.includes('TOLAK') ? 'REJECTED' : 'ACCEPTED');
-                    setCurrentStep(5);
-                    setTimeout(() => setUploadState('completed'), 500);
-                }
-            }
         };
 
         checkInfrastructure();
-        const interval = setInterval(checkInfrastructure, 2000);
+        const interval = setInterval(checkInfrastructure, 1500);
 
         if (uploadState === 'processing') {
             localTimer = setInterval(() => setElapsedTime(prev => prev + 1), 1000);
@@ -122,7 +120,7 @@ export default function UploadDatasetPage() {
             clearInterval(interval);
             if (localTimer) clearInterval(localTimer);
         };
-    }, [uploadState]);
+    }, [uploadState, metricsData]);
 
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -142,7 +140,7 @@ export default function UploadDatasetPage() {
         const isExtensionValid = file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls');
 
         if (!validTypes.includes(file.type) && !isExtensionValid) {
-            setErrorMessage('Format file dilarang! Harap upload .csv atau .xlsx.');
+            setErrorMessage('Format file dilarang! Harap upload file berektensi .csv atau .xlsx.');
             setUploadState('error');
             if (fileInputRef.current) fileInputRef.current.value = '';
             return;
@@ -150,15 +148,10 @@ export default function UploadDatasetPage() {
 
         try {
             setSelectedFile(file);
-
-            const isLargeFile = file.size > 5 * 1024 * 1024; // 5 MB Limit
+            const isLargeFile = file.size > 5 * 1024 * 1024;
             const buffer = await file.arrayBuffer();
-
-            // OPTIMASI: Jika file besar, HANYA BACA 5 BARIS PERTAMA agar browser tidak hang!
             const readOptions: any = { type: 'buffer', cellDates: true };
-            if (isLargeFile) {
-                readOptions.sheetRows = 5;
-            }
+            if (isLargeFile) readOptions.sheetRows = 5;
 
             const workbook = xlsx.read(buffer, readOptions);
             const sheetName = workbook.SheetNames[0];
@@ -171,7 +164,7 @@ export default function UploadDatasetPage() {
             setDisplayData(previewData);
             setUploadState('previewing');
         } catch (error) {
-            setErrorMessage('Gagal membaca file lokal.');
+            setErrorMessage('Gagal membaca file lokal. File mungkin korup atau tidak valid.');
             setUploadState('error');
         }
     };
@@ -183,6 +176,7 @@ export default function UploadDatasetPage() {
         setCurrentStep(0);
         setElapsedTime(0);
         setErrorMessage('');
+        setMetricsData(null);
 
         const formData = new FormData();
         formData.append('file', selectedFile);
@@ -195,12 +189,18 @@ export default function UploadDatasetPage() {
             });
 
             if (!res.ok) {
-                const data = await res.json();
-                setErrorMessage(data.error || 'Gagal mengirim data ke server AI.');
+                let errorText = 'Gagal mengirim data ke server AI. HTTP Status: ' + res.status;
+                try {
+                    const data = await res.json();
+                    errorText = data.error || data.message || errorText;
+                } catch (jsonError) {
+                    errorText = "Terjadi kegagalan kritis di sisi server AI. Harap periksa terminal backend.";
+                }
+                setErrorMessage(errorText);
                 setUploadState('error');
             }
-        } catch (error) {
-            setErrorMessage('Koneksi terputus. Pastikan FastAPI menyala di port 8000.');
+        } catch (error: any) {
+            setErrorMessage(error.message || 'Koneksi terputus. Pastikan FastAPI menyala di port 8000.');
             setUploadState('error');
         }
     };
@@ -212,6 +212,7 @@ export default function UploadDatasetPage() {
         setDisplayData([]);
         setSelectedFile(null);
         setErrorMessage('');
+        setMetricsData(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -233,13 +234,17 @@ export default function UploadDatasetPage() {
                             Suntikkan data transaksi mentah (.csv/.xlsx) untuk dinormalisasi ke PostgreSQL. MLOps Pipeline akan otomatis melakukan evaluasi dan retraining jika data valid.
                         </p>
                     </div>
+                    {uploadState === 'idle' && (
+                        <div className="relative z-10 mt-6 md:mt-0 flex gap-4">
+                            <button onClick={() => window.location.reload()} className="bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 font-bold py-2 px-4 rounded-full transition-all text-xs flex items-center gap-2 shadow-sm"><RefreshCcw size={14} /> Refresh Koneksi</button>
+                        </div>
+                    )}
                 </div>
             )}
 
             <div className="space-y-8">
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".csv, .xlsx" className="hidden" disabled={!isSystemReady} />
 
-                {/* --- STATE 1: IDLE --- */}
                 {uploadState === 'idle' && (
                     <div className="bg-white rounded-[40px] border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 lg:p-10 transition-all duration-300 animate-in fade-in fill-mode-both">
                         {systemStatus.isChecking ? (
@@ -268,14 +273,13 @@ export default function UploadDatasetPage() {
                                 <div className="p-4 bg-red-100 rounded-full text-red-500 mb-4 shadow-sm border border-red-200"><ServerCrash size={40} /></div>
                                 <h3 className="font-bold text-2xl text-red-700 mb-2 tracking-tight">Pipeline Upload Terkunci</h3>
                                 <p className="text-red-600/80 mb-6 max-w-md text-sm font-medium">
-                                    Anda tidak dapat mengunggah data karena sebagian infrastruktur mati. Silakan periksa status layanan di bawah.
+                                    Anda tidak dapat mengunggah data karena sebagian infrastruktur mati. Silakan periksa status layanan di atas.
                                 </p>
                             </div>
                         )}
                     </div>
                 )}
 
-                {/* --- STATE 2: PREVIEWING (WITH SMART BYPASS) --- */}
                 {uploadState === 'previewing' && (
                     <div className="bg-white rounded-[40px] border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-8 lg:p-10 animate-in zoom-in-95 fill-mode-both">
                         <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
@@ -295,13 +299,6 @@ export default function UploadDatasetPage() {
                                 <button onClick={resetUpload} className="bg-slate-50 border border-slate-200 text-slate-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 font-bold py-3 px-6 rounded-full transition-all text-sm flex items-center gap-2"><Trash2 size={16} /> Batal</button>
                                 <button onClick={executeUploadToDatabase} className="bg-[#4f46e5] hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-full transition-all text-sm shadow-md flex items-center gap-2"><BrainCircuit size={18} /> Execute Pipeline</button>
                             </div>
-                        </div>
-
-                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6 flex items-start gap-3">
-                            <Sparkles className="text-indigo-500 shrink-0 mt-0.5" size={20} />
-                            <p className="text-indigo-800 text-sm">
-                                Menampilkan <strong>5 baris pertama</strong> secara dinamis untuk menghemat memori browser Anda. Keseluruhan data akan diproses saat pipeline dieksekusi.
-                            </p>
                         </div>
 
                         <div className="overflow-x-auto rounded-2xl border border-slate-200 custom-scrollbar pb-2">
@@ -329,7 +326,6 @@ export default function UploadDatasetPage() {
                     </div>
                 )}
 
-                {/* --- STATE 3: PROCESSING --- */}
                 {uploadState === 'processing' && (
                     <div className="animate-in fade-in zoom-in-95 duration-500 space-y-6">
                         <div className="bg-white rounded-[32px] p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
@@ -385,29 +381,52 @@ export default function UploadDatasetPage() {
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-200"><Database size={24} className="text-slate-600" /></div>
                                         <div>
-                                            <h4 className="font-bold text-slate-900">{uploadStats.fileName}</h4>
-                                            <p className="text-xs text-slate-500 mt-0.5">{formatBytes(uploadStats.fileSize)} • Uploaded by {user?.name || 'Admin'}</p>
+                                            <h4 className="font-bold text-slate-900">{uploadStats.fileName || "Processing..."}</h4>
+                                            <p className="text-xs text-slate-500 mt-0.5">Pipeline in progress</p>
                                         </div>
-                                    </div>
-                                    <div className="text-right hidden sm:block">
-                                        <p className="text-[10px] uppercase font-bold text-slate-400">Start Time</p>
-                                        <p className="text-sm font-semibold text-slate-700">{uploadStats.startTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</p>
                                     </div>
                                 </div>
 
                                 <div className="bg-[#0F172A] rounded-[32px] p-6 lg:p-8 flex-1 border border-slate-800 shadow-xl overflow-hidden relative flex flex-col justify-end min-h-[250px]">
                                     <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px]" />
                                     <div className="relative z-10 font-mono text-xs md:text-sm text-slate-300 space-y-3">
-                                        <p className="text-slate-500">[{uploadStats.startTime.toLocaleTimeString()}] System initializing...</p>
-                                        {currentStep >= 0 && <p className="text-emerald-400">[{formatTime(1)}] Validating file structure and schema... OK.</p>}
-                                        {currentStep >= 1 && <p className="text-emerald-400">[{formatTime(15)}] Ingesting mass data to PostgreSQL... Success.</p>}
-                                        {currentStep >= 2 && <p className="text-blue-400 animate-pulse">[{formatTime(30)}] Initializing Random Forest Regressor. Loading historical features...</p>}
-                                        {currentStep >= 3 && <p className="text-amber-400">[{formatTime(50)}] Cross-validating candidate model metrics (MAPE, MAE)...</p>}
-                                        {currentStep >= 4 && <p className="text-indigo-300">[{formatTime(elapsedTime)}] Finalizing deployment decision...</p>}
+                                        <p className="text-slate-500">[SYSTEM] Server connection synchronized.</p>
+                                        {currentStep >= 0 && <p className="text-emerald-400">[STAGE 1] Validating file structure and reading dataset to memory... OK.</p>}
+                                        {currentStep >= 1 && <p className="text-emerald-400">[STAGE 2] Ingesting mass data to PostgreSQL database... Success.</p>}
+                                        {currentStep >= 2 && <p className="text-blue-400">
+                                            [STAGE 3] Loading Production Model (RandomForest). Initiating Candidate Training...
+                                        </p>}
 
-                                        {currentStep < 4 && (
+                                        {/* OUTPUT TRANSPARAN LOG METRIK */}
+                                        {currentStep >= 3 && metricsData && (
+                                            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700 space-y-2 mt-2">
+                                                <p className="text-amber-400">[STAGE 4] Cross-validation completed. Metrics Comparison:</p>
+                                                <div className="grid grid-cols-2 gap-4 mt-2 pl-4">
+                                                    <div>
+                                                        <p className="text-slate-400">--- PROD. MODEL ---</p>
+                                                        <p>R² Score : {metricsData.prod_r2}</p>
+                                                        <p>MAE      : {metricsData.prod_mae}</p>
+                                                        <p>MAPE     : {metricsData.prod_mape}%</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-slate-400">--- CANDIDATE ---</p>
+                                                        <p className={metricsData.cand_r2 > metricsData.prod_r2 ? "text-emerald-400" : "text-red-400"}>R² Score : {metricsData.cand_r2}</p>
+                                                        <p className={metricsData.cand_mae < metricsData.prod_mae ? "text-emerald-400" : "text-red-400"}>MAE      : {metricsData.cand_mae}</p>
+                                                        <p className={metricsData.cand_mape < metricsData.prod_mape ? "text-emerald-400" : "text-red-400"}>MAPE     : {metricsData.cand_mape}%</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {currentStep >= 4 && metricsData && (
+                                            <p className={`mt-4 font-bold ${metricsData.decision === 'ACCEPTED' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                                [STAGE 5] Deployment decision: {metricsData.decision === 'ACCEPTED' ? 'CANDIDATE ACCEPTED. OVERWRITING PROD MODEL...' : 'CANDIDATE REJECTED. MAINTAINING PROD MODEL.'}
+                                            </p>
+                                        )}
+
+                                        {currentStep < 5 && (
                                             <div className="flex items-center gap-2 mt-4 text-slate-400">
-                                                <Loader2 size={14} className="animate-spin" /> Executing current block...
+                                                <Loader2 size={14} className="animate-spin" /> Executing server block...
                                             </div>
                                         )}
                                     </div>
@@ -418,7 +437,7 @@ export default function UploadDatasetPage() {
                 )}
 
                 {/* --- STATE 4: COMPLETED (RETRAINING SUMMARY CARD) --- */}
-                {uploadState === 'completed' && (
+                {uploadState === 'completed' && metricsData && (
                     <div className="animate-in slide-in-from-bottom-8 duration-700 space-y-6">
                         <div className={`rounded-[32px] p-8 border flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm ${pipelineDecision === 'ACCEPTED' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
                             <div className="flex items-center gap-4">
@@ -451,15 +470,15 @@ export default function UploadDatasetPage() {
                                     <div className="mt-8 space-y-6">
                                         <div>
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MAPE</p>
-                                            <p className="text-2xl font-bold text-slate-800">4.76<span className="text-sm text-slate-400 ml-1">%</span></p>
+                                            <p className="text-2xl font-bold text-slate-800">{metricsData.prod_mape}<span className="text-sm text-slate-400 ml-1">%</span></p>
                                         </div>
                                         <div>
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MAE</p>
-                                            <p className="text-2xl font-bold text-slate-800">1.19</p>
+                                            <p className="text-2xl font-bold text-slate-800">{metricsData.prod_mae}</p>
                                         </div>
                                         <div>
                                             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">R² Score</p>
-                                            <p className="text-2xl font-bold text-slate-800">0.88</p>
+                                            <p className="text-2xl font-bold text-slate-800">{metricsData.prod_r2}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -477,23 +496,20 @@ export default function UploadDatasetPage() {
                                         <div className="flex items-end justify-between">
                                             <div>
                                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MAPE</p>
-                                                <p className="text-2xl font-bold text-slate-900">3.92<span className="text-sm text-slate-400 ml-1">%</span></p>
+                                                <p className={`text-2xl font-bold ${metricsData.cand_mape < metricsData.prod_mape ? 'text-emerald-600' : 'text-amber-600'}`}>{metricsData.cand_mape}<span className="text-sm ml-1">%</span></p>
                                             </div>
-                                            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold border border-emerald-100"><TrendingDown size={14} /> Improved 17.6%</div>
                                         </div>
                                         <div className="flex items-end justify-between">
                                             <div>
                                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">MAE</p>
-                                                <p className="text-2xl font-bold text-slate-900">0.86</p>
+                                                <p className={`text-2xl font-bold ${metricsData.cand_mae < metricsData.prod_mae ? 'text-emerald-600' : 'text-amber-600'}`}>{metricsData.cand_mae}</p>
                                             </div>
-                                            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold border border-emerald-100"><TrendingDown size={14} /> Improved 27.7%</div>
                                         </div>
                                         <div className="flex items-end justify-between">
                                             <div>
                                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">R² Score</p>
-                                                <p className="text-2xl font-bold text-slate-900">0.92</p>
+                                                <p className={`text-2xl font-bold ${metricsData.cand_r2 > metricsData.prod_r2 ? 'text-emerald-600' : 'text-amber-600'}`}>{metricsData.cand_r2}</p>
                                             </div>
-                                            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md text-xs font-bold border border-emerald-100"><TrendingUp size={14} /> Improved 4.5%</div>
                                         </div>
                                     </div>
                                 </div>
@@ -508,9 +524,11 @@ export default function UploadDatasetPage() {
                     <div className="py-16 flex flex-col items-center justify-center text-center animate-in zoom-in-95 bg-white rounded-[40px] border border-slate-100 shadow-sm p-10">
                         <div className="w-20 h-20 bg-red-50 text-red-500 border-4 border-red-100 rounded-full flex items-center justify-center mb-6 shadow-sm"><XCircle size={40} /></div>
                         <h3 className="font-bold text-3xl text-slate-900 mb-3 tracking-tight">Upload Gagal! 🚨</h3>
-                        <p className="text-red-600 mb-8 max-w-lg text-sm font-bold bg-red-50 p-4 rounded-xl border border-red-200 shadow-inner leading-relaxed">
-                            {errorMessage}
-                        </p>
+                        <div className="bg-red-50 p-4 rounded-xl border border-red-200 shadow-inner mb-8 max-w-lg w-full text-left">
+                            <p className="text-red-700 text-sm font-mono break-words whitespace-pre-wrap">
+                                {errorMessage ? String(errorMessage) : "Terjadi kesalahan internal pada server AI. Silakan periksa log terminal backend."}
+                            </p>
+                        </div>
                         <button onClick={resetUpload} className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-10 rounded-full transition-all shadow-sm active:scale-95">Coba Lagi</button>
                     </div>
                 )}
