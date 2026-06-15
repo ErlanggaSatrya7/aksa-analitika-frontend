@@ -43,9 +43,24 @@ export default function RingkasanNasional() {
             }
         };
 
+        // const checkSystemHealth = async () => {
+        //     try {
+        //         const res = await fetch('http://localhost:8000/api/health');
+        //         if (res.ok) setFastApiStatus('online');
+        //         else setFastApiStatus('offline');
+        //     } catch {
+        //         setFastApiStatus('offline');
+        //     }
+        // };
+
+
+        // running lokal and deployment in railway
         const checkSystemHealth = async () => {
+            // Menarik URL dari environment variable atau fallback ke localhost
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
             try {
-                const res = await fetch('http://localhost:8000/api/health');
+                const res = await fetch(`${apiUrl}/api/health`);
                 if (res.ok) setFastApiStatus('online');
                 else setFastApiStatus('offline');
             } catch {

@@ -59,7 +59,11 @@ export default function AIForecastingPage() {
         const initSystem = async () => {
             try {
                 // 1. Cek Koneksi AI Backend
-                const healthRes = await fetch('http://localhost:8000/api/health');
+                // const healthRes = await fetch('http://localhost:8000/api/health');
+
+                // running lokal and deployment in railway
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const healthRes = await fetch(`${apiUrl}/api/health`);
                 setIsFastApiConnected(healthRes.ok);
 
                 // 2. Tarik Data Master dari Database
@@ -107,7 +111,11 @@ export default function AIForecastingPage() {
         setInsightTime(updateTimestamp());
 
         try {
-            const res = await fetch("http://localhost:8000/api/forecast", {
+            // const res = await fetch("http://localhost:8000/api/forecast", {
+
+            // running lokal and deployment in railway
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${apiUrl}/api/forecast`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

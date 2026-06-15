@@ -155,7 +155,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             let dbState = 'offline';
 
             try {
-                const resApi = await fetch('http://localhost:8000/api/health');
+                // const resApi = await fetch('http://localhost:8000/api/health');
+
+
+                // running lokal and deployment in railway 
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const resApi = await fetch(`${apiUrl}/api/health`);
                 if (resApi.ok) apiState = 'online';
             } catch (error) { apiState = 'offline'; }
 
@@ -207,7 +212,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setShowAllPrompts(false);
 
         try {
-            const response = await fetch('http://localhost:8000/api/chat/completions', {
+            // running lokal and deployment in railway
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${apiUrl}/api/chat/completions`, {
+            // const response = await fetch('http://localhost:8000/api/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

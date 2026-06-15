@@ -63,7 +63,9 @@ export default function UploadDatasetPage() {
             let dbOnline = false;
 
             try {
-                const resApi = await fetch('http://localhost:8000/api/health');
+
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const resApi = await fetch(`${apiUrl}/api/health`);
                 if (resApi.ok) {
                     apiOnline = true;
                     const data = await resApi.json();
@@ -183,7 +185,12 @@ export default function UploadDatasetPage() {
         formData.append('uploadedBy', user?.name || user?.email || 'Data Engineer');
 
         try {
-            const res = await fetch('http://localhost:8000/api/dataset/upload', {
+            // running 
+            // const res = await fetch('http://localhost:8000/api/dataset/upload', {
+
+            // running di lokal dan juga railway
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(`${apiUrl}/api/dataset/upload`, {
                 method: 'POST',
                 body: formData,
             });

@@ -37,7 +37,11 @@ export default function DataEngineerDashboard() {
                 }
 
                 // Fetch Metrik Real-Time
-                const resMetrics = await fetch('http://localhost:8000/api/model/latest-metrics');
+                // const resMetrics = await fetch('http://localhost:8000/api/model/latest-metrics');
+
+                // running lokal dan railway
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const resMetrics = await fetch(`${apiUrl}/api/model/latest-metrics`);
                 if (resMetrics.ok) {
                     const metData = await resMetrics.json();
                     if (metData.metrics) {
@@ -60,7 +64,10 @@ export default function DataEngineerDashboard() {
         // 2. Fetch Status Server FastAPI
         const checkFastApi = async () => {
             try {
-                const res = await fetch('http://localhost:8000/api/health');
+                // running lokal dan railway
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const res = await fetch(`${apiUrl}/api/health`);
+                // const res = await fetch('http://localhost:8000/api/health');
                 if (res.ok) {
                     const data = await res.json();
                     setFastApiStatus('online');

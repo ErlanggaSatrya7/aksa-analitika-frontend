@@ -44,7 +44,11 @@ export default function HistoryPage() {
 
         const checkAiPipeline = async () => {
             try {
-                const res = await fetch('http://localhost:8000/api/health');
+                // const res = await fetch('http://localhost:8000/api/health');
+
+                // running lokal dan railway
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const res = await fetch(`${apiUrl}/api/health`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.pipeline_running) {
