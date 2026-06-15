@@ -5,51 +5,77 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import {
     LayoutDashboard, Trophy, TrendingUp, LogOut, MapPin, Bot, X, Send,
-    Menu, Settings, AlertTriangle, CheckCircle2, ShieldCheck, Inbox, Bell, BrainCircuit, ServerOff
+    Menu, Settings, AlertTriangle, CheckCircle2, ShieldCheck, Inbox, Bell,
+    BrainCircuit, ServerCrash, Activity, Database, MessagesSquare, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function ProvinceLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
 
-    // SINKRONISASI SESI DENGAN NEXTAUTH
     const { data: session } = useSession();
-
-    // MENGATASI TS ERROR: Cast ke `any`
-    const userRole = (session?.user as any)?.role || 'Memuat...';
-    const userState = (session?.user as any)?.assignedState || 'Memuat...';
-    const firstName = session?.user?.name?.split(' ')[0] || 'User';
-    const avatarSeed = session?.user?.email || 'default-user';
+    const user = session?.user as any;
+    const userName = user?.name || 'Admin';
+    const firstName = userName.split(' ')[0];
+    const avatarSeed = user?.email || 'admin-user';
+    const userRole = user?.role || 'STATE_ADMIN';
+    const userState = user?.assignedState || 'Memuat...';
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
-    // KUNCI KEJUJURAN: Status koneksi FastAPI
-    const [isFastApiConnected, setIsFastApiConnected] = useState(false);
+    // DIAGNOSTIK SISTEM SAAT MASUK WEB
+    const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
+    const [systemStatus, setSystemStatus] = useState({
+        fastApi: 'checking',
+        supabase: 'checking'
+    });
 
-    // State Chatbot & Toast
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
-    const [chatInput, setChatInput] = useState('');
-    const [isAiTyping, setIsAiTyping] = useState(false);
-    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
-
-    // State Notifications DINAMIS DARI DATABASE
+    // NOTIFIKASI
     const [isNotifOpen, setIsNotifOpen] = useState(false);
     const notifRef = useRef<HTMLDivElement>(null);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
+    // CHATBOT COPILOT PREMIUM
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isAiTyping, setIsAiTyping] = useState(false);
+    const [showAllPrompts, setShowAllPrompts] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const [toast, setToast] = useState<{ message: string, type: 'success' | 'warning' } | null>(null);
     const [currentDate, setCurrentDate] = useState('Memuat...');
     const [currentLocation, setCurrentLocation] = useState('Memuat...');
     const [greeting, setGreeting] = useState('Halo');
 
-    // FUNGSI FETCH NOTIFIKASI
+    // PROMPT PILIHAN REGIONAL
+    const regionalPrompts = [
+        `Bagaimana performa penjualan total di Provinsi ${userState} bulan ini?`,
+        `Tolong bandingkan margin profit rata-rata antar retailer di ${userState}.`,
+        `Kategori produk apa yang menyumbang pendapatan terbesar di ${userState}?`,
+        `Berapa banyak stok barang yang diprediksi AI untuk bulan depan di ${userState}?`,
+        `Apa strategi terbaik untuk meningkatkan efisiensi penjualan di area ${userState}?`,
+        `Apakah ada tren penurunan metrik yang harus saya waspadai saat ini?`,
+        `Sebutkan 3 retailer dengan performa paling lambat di ${userState}.`,
+        `Metode penjualan apa (In-store vs Online) yang paling efektif di wilayah saya?`
+    ];
+
+    const showToast = (message: string, type: 'success' | 'warning') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 4000);
+    };
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [chatMessages, isAiTyping, isChatOpen, showAllPrompts]);
+
     const fetchNotifications = async () => {
-        if (!session?.user?.email) return;
+        if (!user?.email) return;
         try {
-            const res = await fetch(`/api/admin/notifications?email=${session.user.email}`);
+            const res = await fetch(`/api/admin/notifications?email=${user.email}`);
             if (res.ok) {
                 const data = await res.json();
                 setNotifications(data);
@@ -61,20 +87,20 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
     };
 
     useEffect(() => {
-        if (session?.user?.email) {
+        if (user?.email) {
             fetchNotifications();
             const interval = setInterval(fetchNotifications, 30000);
             return () => clearInterval(interval);
         }
-    }, [session?.user?.email]);
+    }, [user?.email]);
 
     const markAllAsRead = async () => {
-        if (!session?.user?.email || unreadCount === 0) return;
+        if (!user?.email || unreadCount === 0) return;
         try {
             const res = await fetch('/api/admin/notifications', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: session.user.email })
+                body: JSON.stringify({ email: user.email })
             });
             if (res.ok) {
                 fetchNotifications();
@@ -88,16 +114,21 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
     const formatTimeAgo = (dateString: string) => {
         const now = new Date();
         const past = new Date(dateString);
-        const diffMins = Math.round((now.getTime() - past.getTime()) / 60000);
-        if (diffMins < 60) return `${diffMins} Menit yang lalu`;
-        if (diffMins < 1440) return `${Math.round(diffMins / 60)} Jam yang lalu`;
-        return `Kemarin`;
+        const diffMs = now.getTime() - past.getTime();
+        const diffMins = Math.round(diffMs / 60000);
+        const diffHours = Math.round(diffMins / 60);
+        const diffDays = Math.round(diffHours / 24);
+
+        if (diffMins < 60) return `${diffMins} Menit`;
+        if (diffHours < 24) return `${diffHours} Jam`;
+        if (diffDays === 1) return `Kemarin`;
+        return `${diffDays} Hari`;
     };
 
     const getNotifStyle = (title: string) => {
         const t = title.toLowerCase();
         if (t.includes('memo') || t.includes('target') || t.includes('ai')) return { icon: <BrainCircuit size={16} className="text-[#4f46e5]" />, bg: 'bg-[#EDF2FE]' };
-        if (t.includes('eskalasi') || t.includes('krisis')) return { icon: <AlertTriangle size={16} className="text-red-500" />, bg: 'bg-red-50' };
+        if (t.includes('eskalasi') || t.includes('krisis') || t.includes('defisit')) return { icon: <AlertTriangle size={16} className="text-red-500" />, bg: 'bg-red-50' };
         return { icon: <CheckCircle2 size={16} className="text-emerald-500" />, bg: 'bg-emerald-50' };
     };
 
@@ -112,9 +143,34 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
         else if (hour >= 15 && hour < 18) setGreeting('Selamat Sore');
         else setGreeting('Selamat Malam');
 
-        if (userState !== 'Memuat...') {
+        if (userState && userState !== 'Memuat...') {
             setCurrentLocation(`${userState}, ID`);
         }
+    }, [userState]);
+
+    useEffect(() => {
+        const runSystemDiagnostic = async () => {
+            setIsSystemModalOpen(true);
+            let apiState = 'offline';
+            let dbState = 'offline';
+
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const resApi = await fetch(`${apiUrl}/api/health`);
+                if (resApi.ok) apiState = 'online';
+            } catch (error) { apiState = 'offline'; }
+
+            try {
+                if (userState !== 'Memuat...') {
+                    const resDb = await fetch(`/api/regional/analytics/dashboard?state=${encodeURIComponent(userState)}`);
+                    if (resDb.ok) dbState = 'online';
+                }
+            } catch (error) { dbState = 'offline'; }
+
+            setSystemStatus({ fastApi: apiState, supabase: dbState });
+        };
+
+        if (userState !== 'Memuat...') runSystemDiagnostic();
     }, [userState]);
 
     useEffect(() => {
@@ -125,52 +181,122 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleLogout = async () => await signOut({ callbackUrl: '/' });
+    const handleLogout = async () => {
+        setIsLogoutModalOpen(false);
+        await signOut({ redirect: false });
+        window.location.href = '/';
+    };
+
     const handleScroll = (e: React.UIEvent<HTMLDivElement>) => setIsScrolled(e.currentTarget.scrollTop > 10);
 
-    const showToast = (message: string, type: 'success' | 'warning') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 3000);
+    const cleanAiResponse = (text: string) => {
+        if (!text) return "";
+        let cleanedText = text.replace(/[*#$/\\_~`>]/g, '');
+        cleanedText = cleanedText.replace(/\s{2,}/g, ' ').trim();
+        return cleanedText;
     };
 
-    // PERBAIKAN: Chatbot Jujur & Terkunci jika FastAPI Offline
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSendMessage = async (e?: React.FormEvent, directMessage?: string) => {
+        if (e) e.preventDefault();
 
-        if (!isFastApiConnected) {
-            showToast("Server ML Offline: Tidak dapat memproses percakapan.", "warning");
-            return;
-        }
+        const messageToSend = directMessage || chatInput.trim();
+        if (!messageToSend) return;
 
-        if (!chatInput.trim()) return;
-        setChatMessages(prev => [...prev, { role: 'user', text: chatInput }]);
-        const input = chatInput.toLowerCase();
+        setChatMessages(prev => [...prev, { role: 'user', text: messageToSend }]);
         setChatInput('');
         setIsAiTyping(true);
+        setShowAllPrompts(false);
 
-        // Fetch ke FastAPI sesungguhnya akan ditaruh di sini nanti
+        try {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${apiUrl}/api/chat/completions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: messageToSend,
+                    user_context: `Nama saya ${firstName}, Admin Provinsi ${userState}.`,
+                    user_role: userRole,
+                    assigned_state: userState
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const sanitizedReply = cleanAiResponse(data.reply);
+                setChatMessages(prev => [...prev, { role: 'ai', text: sanitizedReply }]);
+            } else {
+                setChatMessages(prev => [...prev, { role: 'ai', text: "⚠️ Maaf, gagal memproses respons AI (Error 500)." }]);
+            }
+        } catch (error) {
+            setChatMessages(prev => [...prev, { role: 'ai', text: "❌ Koneksi ke FastAPI terputus. Pastikan server backend berjalan." }]);
+        } finally {
+            setIsAiTyping(false);
+        }
     };
+
+    const isSystemOnline = systemStatus.fastApi === 'online' && systemStatus.supabase === 'online';
+    const isSystemChecking = systemStatus.fastApi === 'checking' || systemStatus.supabase === 'checking';
+    const isFastApiConnected = systemStatus.fastApi === 'online';
+    const visiblePrompts = showAllPrompts ? regionalPrompts : regionalPrompts.slice(0, 3);
 
     return (
         <div className="flex h-[100dvh] w-full bg-[#F4F7FE] overflow-hidden font-sans text-slate-600 relative">
 
             {toast && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[100] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-3.5 rounded-[40px] shadow-xl flex items-center gap-3 z-[150] animate-in slide-in-from-top-5 duration-300 font-bold border text-sm w-[90%] max-w-sm ${toast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {toast.type === 'success' ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertTriangle size={20} className="shrink-0" />}
                     <p className="leading-tight">{toast.message}</p>
                 </div>
             )}
 
-            {isLogoutModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[32px] w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center text-center border border-slate-100">
-                        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 shadow-sm border border-red-100"><LogOut size={28} className="ml-1" /></div>
-                        <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">Konfirmasi Sign Out</h3>
-                        <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed">Apakah Anda yakin ingin keluar dari sistem? Sesi Anda akan diakhiri.</p>
-                        <div className="flex gap-3 w-full">
-                            <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-3.5 px-4 bg-slate-50 text-slate-600 font-bold text-sm rounded-[24px] hover:bg-slate-100 transition-colors border border-slate-200 active:scale-95">Batal</button>
-                            <button onClick={handleLogout} className="flex-1 py-3.5 px-4 bg-red-500 text-white font-bold text-sm rounded-[24px] hover:bg-red-600 transition-colors shadow-[0_8px_20px_rgba(239,68,68,0.3)] active:scale-95">Sign Out</button>
+            {isSystemModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[130] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[32px] w-full max-w-md p-8 shadow-2xl animate-in zoom-in-95 flex flex-col items-center border border-slate-100">
+                        <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-sm border border-indigo-100">
+                            <ShieldCheck size={32} />
                         </div>
+                        <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight text-center">Diagnostik Sistem</h3>
+                        <p className="text-sm text-slate-500 mb-8 font-medium leading-relaxed text-center">
+                            Memeriksa konektivitas infrastruktur wilayah sebelum Anda memantau Dashboard.
+                        </p>
+
+                        <div className="w-full space-y-4 mb-8">
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Activity size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">AI Engine (FastAPI)</span>
+                                </div>
+                                {systemStatus.fastApi === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.fastApi === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><ServerCrash size={12} /> Offline</span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div className="flex items-center gap-3">
+                                    <Database size={20} className="text-indigo-500" />
+                                    <span className="font-bold text-slate-700 text-sm">Database ({userState})</span>
+                                </div>
+                                {systemStatus.supabase === 'checking' ? (
+                                    <span className="text-xs font-bold text-slate-400 animate-pulse">Menghubungkan...</span>
+                                ) : systemStatus.supabase === 'online' ? (
+                                    <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full flex items-center gap-1"><CheckCircle2 size={12} /> Online</span>
+                                ) : (
+                                    <span className="text-xs font-bold bg-red-100 text-red-700 px-3 py-1 rounded-full flex items-center gap-1"><AlertTriangle size={12} /> Offline</span>
+                                )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setIsSystemModalOpen(false)}
+                            disabled={isSystemChecking}
+                            className="w-full py-4 px-4 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white font-bold text-sm rounded-[24px] hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95"
+                        >
+                            {isSystemChecking ? 'Menunggu Hasil...' : 'Masuk Dashboard'}
+                        </button>
                     </div>
                 </div>
             )}
@@ -216,7 +342,7 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                             <img src={`https://api.dicebear.com/7.x/notionists/svg?seed=${avatarSeed}`} alt="Profile" className="w-10 h-10 rounded-full object-cover shadow-sm border-2 border-white group-hover:scale-105 transition-transform bg-slate-100" />
                             <div className="overflow-hidden">
                                 <p className={`text-sm font-bold leading-tight truncate transition-colors group-hover:text-[#4f46e5] ${pathname.includes('/profile') ? 'text-[#4f46e5]' : 'text-slate-900'}`}>{firstName}</p>
-                                <p className="text-[11px] text-slate-500 font-medium truncate">Manager {userState}</p>
+                                <p className="text-[11px] text-slate-500 font-medium truncate">Admin {userState}</p>
                             </div>
                         </div>
                         <Settings size={16} className={`transition-all duration-300 ${pathname.includes('/profile') ? 'text-[#4f46e5] rotate-45' : 'text-slate-400 group-hover:text-[#4f46e5] group-hover:rotate-45'}`} />
@@ -231,7 +357,7 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                         <button className="w-10 h-10 flex items-center justify-center bg-white border border-slate-100 shadow-sm text-slate-700 hover:text-[#4f46e5] hover:bg-[#EDF2FE] hover:border-[#EDF2FE] rounded-2xl transition-all active:scale-95" onClick={() => setIsMobileMenuOpen(true)}>
                             <Menu size={22} strokeWidth={2.5} />
                         </button>
-                        <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA Analitika" className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm" />
+                        <img src="/Logo-AksaAnalitika-BgWhite.png" alt="AKSA" className="h-10 sm:h-12 w-auto object-contain drop-shadow-sm" />
                         <div className="flex items-center gap-3">
                             <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="relative w-9 h-9 bg-white rounded-full flex items-center justify-center text-slate-500 hover:bg-[#EDF2FE] hover:text-[#4f46e5] transition-colors active:scale-95 border border-slate-200 shadow-sm">
                                 <Bell size={16} />
@@ -246,10 +372,11 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                     <div className="hidden lg:flex items-center justify-between px-10 h-20">
                         <div>
                             <h2 className="text-xl font-bold text-slate-900 tracking-tight leading-none">
-                                {pathname.includes('/profile') ? 'Account Settings' : `${greeting}, ${firstName}! 👋`}
+                                {pathname.includes('/profile') ? 'Pengaturan Akun' : `${greeting}, ${firstName}! 👋`}
                             </h2>
-                            <p className="text-xs font-medium text-slate-500 mt-1">Akses otorisasi tingkat Provinsi ({userState})</p>
+                            <p className="text-xs font-medium text-slate-500 mt-1">Akses Otorisasi Tingkat Provinsi</p>
                         </div>
+
                         <div className="flex items-center gap-6 relative" ref={notifRef}>
                             <div className="text-right border-r border-slate-200 pr-6">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{currentDate}</p>
@@ -274,9 +401,13 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                                             const style = getNotifStyle(n.title);
                                             return (
                                                 <div key={n.id} className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer flex gap-3 ${!n.isRead ? 'bg-slate-50/50' : ''}`}>
-                                                    <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${style.bg}`}>{style.icon}</div>
+                                                    <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${style.bg}`}>
+                                                        {style.icon}
+                                                    </div>
                                                     <div>
-                                                        <div className="flex justify-between items-start mb-1"><h4 className={`text-sm ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>{n.title}</h4></div>
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <h4 className={`text-sm ${!n.isRead ? 'font-bold text-slate-900' : 'font-semibold text-slate-700'}`}>{n.title}</h4>
+                                                        </div>
                                                         <p className="text-xs text-slate-500 leading-relaxed mb-1.5 line-clamp-2">{n.description}</p>
                                                         <span className="text-[10px] font-semibold text-slate-400">{formatTimeAgo(n.createdAt)}</span>
                                                     </div>
@@ -297,32 +428,30 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
 
                 <div className="fixed bottom-6 right-4 sm:right-6 lg:bottom-10 lg:right-10 z-[80] flex flex-col items-end">
                     {isChatOpen && (
-                        <div className="bg-white/95 backdrop-blur-xl w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.3)] border border-slate-200/50 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-
-                            {/* PERBAIKAN: Header tetap menggunakan warna gradient ungu kebiruan */}
-                            <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md relative z-10 shrink-0">
+                        <div className="bg-white w-[calc(100vw-32px)] sm:w-[340px] lg:w-[380px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[480px] lg:h-[520px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                            <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <Bot size={24} />
                                     <div>
-                                        <span className="font-bold text-base tracking-tight block leading-tight">Gemma State AI</span>
-                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerOff size={10} /> Offline</span>}
+                                        <span className="font-bold text-base tracking-tight block leading-tight">AKSA COPILOT</span>
+                                        {!isFastApiConnected && <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400 flex items-center gap-1 mt-0.5"><ServerCrash size={10} /> Offline</span>}
                                     </div>
                                 </div>
-                                <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-90"><X size={20} /></button>
+                                <button onClick={() => setIsChatOpen(false)} className="hover:bg-white/20 p-1.5 rounded-full transition-colors active:scale-95"><X size={20} /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50/50 space-y-4 text-sm custom-scrollbar relative z-0">
-                                {/* PERBAIKAN: Pesan awal jujur tanpa dummy */}
-                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium">
+                            <div className="flex-1 overflow-y-auto p-4 lg:p-5 bg-slate-50 space-y-4 text-sm custom-scrollbar flex flex-col">
+                                <div className="bg-white border border-slate-200 text-slate-700 p-4 rounded-[20px] rounded-tl-none max-w-[85%] leading-relaxed shadow-sm font-medium self-start">
                                     {isFastApiConnected
-                                        ? `Halo! Apa yang ingin dianalisis hari ini tentang performa ${userState}?`
-                                        : "Halo! Saat ini model Gemma 4 AI belum terhubung ke server FastAPI. Fitur interaksi dinonaktifkan sementara."
-                                    }
+                                        ? `Akses Provinsi terhubung. Ada yang bisa saya analisis hari ini seputar ${userState}, ${firstName}?`
+                                        : `Halo ${firstName}. Sayangnya model AKSA AI tidak terhubung ke server. Hubungi Data Engineer Anda.`}
                                 </div>
 
                                 {chatMessages.map((msg, i) => (
                                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                                        <div className={`p-4 max-w-[85%] shadow-sm font-medium leading-relaxed ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>{msg.text}</div>
+                                        <div className={`p-4 max-w-[85%] shadow-sm leading-relaxed font-medium ${msg.role === 'user' ? 'bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-[20px] rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-[20px] rounded-tl-none'}`}>
+                                            {msg.text}
+                                        </div>
                                     </div>
                                 ))}
                                 {isAiTyping && (
@@ -334,37 +463,82 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                                         </div>
                                     </div>
                                 )}
+                                <div ref={messagesEndRef} />
                             </div>
 
-                            <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 relative z-10 shrink-0">
+                            {/* --- UX: EXPANDABLE QUICK PROMPTS --- */}
+                            {isFastApiConnected && (
+                                <div className="bg-slate-50/80 border-t border-slate-200 p-4 shrink-0 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] z-10 transition-all duration-300">
+                                    <div className="flex items-center justify-between ml-1 mb-3">
+                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><MessagesSquare size={14} /> Prompt Regional:</p>
+                                        <button
+                                            onClick={() => setShowAllPrompts(!showAllPrompts)}
+                                            className="text-[10px] font-bold text-[#4f46e5] flex items-center gap-1 hover:underline active:scale-95"
+                                        >
+                                            {showAllPrompts ? <><ChevronUp size={12} /> Sembunyikan</> : <><ChevronDown size={12} /> Lihat Semua ({regionalPrompts.length})</>}
+                                        </button>
+                                    </div>
+                                    <div className={`flex flex-wrap gap-2 transition-all duration-300 overflow-y-auto custom-scrollbar ${showAllPrompts ? 'max-h-40' : 'max-h-20'}`}>
+                                        {visiblePrompts.map((prompt, index) => (
+                                            <button
+                                                key={index}
+                                                onClick={() => handleSendMessage(undefined, prompt)}
+                                                className="text-left bg-white hover:bg-[#EDF2FE] text-[#4f46e5] px-4 py-2 rounded-2xl text-[11px] font-bold transition-all border border-slate-200 hover:border-[#6A7BFA] shadow-sm active:scale-95"
+                                            >
+                                                {prompt}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSendMessage} className="p-3 lg:p-4 bg-white border-t border-slate-100 flex gap-2 shrink-0">
                                 <input
                                     type="text"
                                     value={chatInput}
                                     onChange={(e) => setChatInput(e.target.value)}
                                     disabled={!isFastApiConnected || isAiTyping}
-                                    placeholder={isFastApiConnected ? `Tanya performa ${userState}...` : "Menunggu koneksi server..."}
+                                    placeholder={isFastApiConnected ? "Ketik prompt analisis regional..." : "Server Offline..."}
                                     className="flex-1 bg-slate-50 border border-slate-200 rounded-[40px] px-4 lg:px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#4f46e5]/30 focus:border-[#4f46e5] text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                 />
-                                {/* PERBAIKAN: Tombol kirim tetap gradien tapi redup (opacity-50) saat disabled */}
-                                <button type="submit" disabled={!isFastApiConnected || isAiTyping} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-90 flex items-center justify-center">
+                                <button type="submit" disabled={!isFastApiConnected || isAiTyping || !chatInput.trim()} className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white p-3 rounded-full hover:shadow-md transition-all disabled:opacity-50 shadow-sm active:scale-95 flex items-center justify-center">
                                     <Send size={18} />
                                 </button>
                             </form>
                         </div>
                     )}
-
-                    {/* PERBAIKAN: Ikon Chatbot tetap gradien, ditambah dot peringatan jika offline */}
-                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 active:scale-95 transition-all duration-300 border-[3px] border-white z-[70] relative">
+                    <button onClick={() => setIsChatOpen(!isChatOpen)} className="w-14 h-14 lg:w-16 lg:h-16 bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] text-white rounded-full flex items-center justify-center shadow-[0_12px_30px_rgba(79,70,229,0.4)] hover:scale-105 transition-transform duration-300 border-[4px] border-white z-10 active:scale-95">
                         {isChatOpen ? <X size={24} /> : <Bot size={26} />}
                         {!isFastApiConnected && !isChatOpen && <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-amber-400 border-2 border-white rounded-full"></span>}
                     </button>
                 </div>
             </div>
 
+            {/* LOGOUT CONFIRMATION MODAL */}
+            {isLogoutModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-[32px] w-full max-w-sm p-8 shadow-2xl text-center border border-slate-100 animate-in zoom-in-95 duration-300">
+                        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <LogOut size={28} />
+                        </div>
+                        <h3 className="font-black text-slate-900 text-xl mb-2">Keluar Akun?</h3>
+                        <p className="text-sm text-slate-500 mb-8">Sesi Anda akan berakhir dan Anda harus login kembali untuk masuk ke dashboard regional.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsLogoutModalOpen(false)} className="flex-1 py-3 rounded-full font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all active:scale-95">Batal</button>
+                            <button onClick={handleLogout} className="flex-1 py-3 rounded-full font-bold text-sm bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-200 transition-all active:scale-95">Ya, Keluar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .hide-scrollbar-on-mobile::-webkit-scrollbar { display: none; }
                 .hide-scrollbar-on-mobile { -ms-overflow-style: none; scrollbar-width: none; }
+                .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; border: 2px solid #f1f5f9; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
             `}} />
         </div>
     );

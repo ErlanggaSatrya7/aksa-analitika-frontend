@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-// 1. GET: Ambil notifikasi milik user yang sedang login
+// Mencegah kebocoran memori koneksi database Next.js pada mode development
+export const dynamic = 'force-dynamic';
+
+// 1. GET: Ambil notifikasi milik user yang sedang login (Otomatis ter-filter personal)
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -9,11 +12,11 @@ export async function GET(request: Request) {
 
         if (!email) return NextResponse.json({ error: "Email diperlukan." }, { status: 400 });
 
-        // Cari User ID berdasarkan Email
+        // Cari User ID berdasarkan Email akun yang sedang aktif
         const user = await prisma.users.findUnique({ where: { email } });
         if (!user) return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
 
-        // Ambil notifikasi miliknya (Maksimal 15 terbaru)
+        // Ambil notifikasi milik user ini saja (Maksimal 15 terbaru agar performa kencang)
         const userNotifs = await prisma.notifications.findMany({
             where: { userId: user.id },
             orderBy: { createdAt: 'desc' },
@@ -23,7 +26,7 @@ export async function GET(request: Request) {
         return NextResponse.json(userNotifs, { status: 200 });
     } catch (error) {
         console.error("Gagal mengambil notifikasi:", error);
-        return NextResponse.json({ error: "Terjadi kesalahan server." }, { status: 500 });
+        return NextResponse.json({ error: "Terjadi kesalahan server saat memuat notifikasi." }, { status: 500 });
     }
 }
 
@@ -38,7 +41,7 @@ export async function PATCH(request: Request) {
         const user = await prisma.users.findUnique({ where: { email } });
         if (!user) return NextResponse.json({ error: "User tidak ditemukan." }, { status: 404 });
 
-        // Update semua notifikasi yang masih belum terbaca menjadi terbaca
+        // Update semua notifikasi yang masih belum terbaca milik user ini menjadi terbaca
         await prisma.notifications.updateMany({
             where: {
                 userId: user.id,

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Mengunci pool koneksi agar selalu segar dan mencegah error EMAXCONNSESSION saat refresh konstan
+export const dynamic = 'force-dynamic';
+
 // 1. GET: Mengambil Riwayat Broadcast dari Tabel Notifications
 export async function GET() {
     try {
@@ -8,7 +11,7 @@ export async function GET() {
         const allNotifs = await prisma.notifications.findMany({
             where: { title: { startsWith: 'Memo Target:' } },
             orderBy: { createdAt: 'desc' },
-            take: 100 // Ambil sampel secukupnya untuk di-deduplicate
+            take: 100
         });
 
         const uniqueBroadcasts: any[] = [];
@@ -34,33 +37,63 @@ export async function GET() {
     }
 }
 
-// 2. POST: Mengirim Broadcast Massal ke Database
+// 2. POST: Mengirim Targeted Broadcast Dinamis ke Database (Command Center Core Engine)
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { target, insight } = body;
+        // Menangkap targetScope yang dikirim secara dinamis oleh tombol 'Teruskan ke Cabang' di tab Forecast
+        const { targetScope, target, insight } = body;
 
-        let usersToNotify = [];
+        let usersToNotify: { id: string }[] = [];
+        const scope = targetScope || '';
 
-        // Cek apakah broadcast ditujukan untuk Nasional atau Provinsi Tertentu
-        if (target.includes('Seluruh')) {
-            // Targetkan semua user
+        // ====================================================================
+        // LOGIKA PENYARINGAN TARGET OPERASIONAL (COMMAND CENTER ENGINE)
+        // ====================================================================
+        if (scope === 'GLOBAL' || target.includes('Seluruh')) {
+            // SKENARIO 1: FILTER NASIONAL GLOBAL -> Masuk ke notifikasi semua user aktif
             usersToNotify = await prisma.users.findMany({ select: { id: true } });
-        } else {
-            // Ekstrak nama provinsi (Misal: "Manajer Provinsi JAWA TIMUR" -> "JAWA TIMUR")
-            const provName = target.replace('Manajer Provinsi ', '').trim();
+
+        } else if (scope.startsWith('PROVINCE:')) {
+            // SKENARIO 2: FILTER PROVINSI -> Masuk ke Ririn (Admin Provinsi DKI Jakarta) + Bagas (Manajer Retailer manapun di DKI Jakarta)
+            const provName = scope.replace('PROVINCE:', '').trim();
             usersToNotify = await prisma.users.findMany({
                 where: { assignedState: provName },
                 select: { id: true }
             });
+
+        } else if (scope.startsWith('RETAILER:')) {
+            // SKENARIO 3: FILTER RETAILER DAN PRODUK -> Murni masuk KHUSUS ke Bagas (Manajer Ramayana di DKI Jakarta) saja.
+            // Mengekstrak kode angka brand (misal: "1000002" dari format id retailers)
+            const rawRetailerId = scope.replace('RETAILER:', '').trim();
+            const brandPrefix = rawRetailerId.split('_')[0];
+
+            // Mengekstrak nama provinsi secara aman dari dalam tanda kurung teks label target
+            // Contoh label: "Manajer Retailer: Ramayana (DKI Jakarta)" -> didapatkan "DKI Jakarta"
+            let provName = "";
+            const match = target.match(/\(([^)]+)\)/);
+            if (match) {
+                provName = match[1].trim();
+            }
+
+            usersToNotify = await prisma.users.findMany({
+                where: {
+                    role: 'RETAILER_ADMIN',
+                    assignedState: provName || undefined,
+                    retailerId: {
+                        startsWith: brandPrefix // Menghubungkan secara fleksibel dengan kode awalan '1000002' di database
+                    }
+                },
+                select: { id: true }
+            });
         }
 
-        // Jika tidak ada user aktif di provinsi tersebut (DB masih kosong)
+        // Jika wilayah/cabang tersebut belum memiliki user terdaftar, simpan log internal agar aman
         if (usersToNotify.length === 0) {
-            return NextResponse.json({ success: true, message: "Tidak ada user di area tersebut. Log tersimpan sebagai Draft." });
+            return NextResponse.json({ success: true, message: "Target cabang belum memiliki pengguna aktif. Log disimpan sebagai draft internal." });
         }
 
-        // Susun data massal untuk di-insert ke tabel notifications
+        // Petakan instruksi massal ke masing-masing ID user yang terfilter
         const notifData = usersToNotify.map(u => ({
             userId: u.id,
             title: `Memo Target: ${target}`,
@@ -72,9 +105,9 @@ export async function POST(request: Request) {
             data: notifData
         });
 
-        return NextResponse.json({ success: true, message: "Broadcast massal berhasil masuk database." }, { status: 201 });
+        return NextResponse.json({ success: true, message: "Instruksi Command Center berhasil diteruskan ke target cabang." }, { status: 201 });
     } catch (error) {
-        console.error("Gagal broadcast:", error);
-        return NextResponse.json({ error: "Gagal mengirim broadcast." }, { status: 500 });
+        console.error("Gagal memproses targeted broadcast:", error);
+        return NextResponse.json({ error: "Gagal memproses targeted broadcast." }, { status: 500 });
     }
 }

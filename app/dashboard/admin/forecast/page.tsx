@@ -9,7 +9,6 @@ export default function AIForecastingPage() {
     const [isPredicting, setIsPredicting] = useState(false);
     const [isBroadcasting, setIsBroadcasting] = useState(false);
 
-    // Status koneksi FastAPI 
     const [isFastApiConnected, setIsFastApiConnected] = useState(false);
 
     // Filter States
@@ -26,16 +25,18 @@ export default function AIForecastingPage() {
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
     const [toastMsg, setToastMsg] = useState<{ title: string, desc: string, isAlert: boolean } | null>(null);
 
-    // Ganti nama state modal agar lebih relevan (bukan email lagi)
     const [showBroadcastModal, setShowBroadcastModal] = useState(false);
 
     const filterRef = useRef<HTMLDivElement>(null);
     const [insightTime, setInsightTime] = useState('');
 
-    // STATE DATA
+    // STATE DATA & UI Tabs
     const [forecastData, setForecastData] = useState<any>(null);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
     const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
+
+    // UI Tab untuk Analisis AI
+    const [activeAiTab, setActiveAiTab] = useState<'evaluasi' | 'mitigasi'>('evaluasi');
 
     const updateTimestamp = () => {
         const now = new Date();
@@ -58,15 +59,10 @@ export default function AIForecastingPage() {
     useEffect(() => {
         const initSystem = async () => {
             try {
-                // 1. Cek Koneksi AI Backend
-                // const healthRes = await fetch('http://localhost:8000/api/health');
-
-                // running lokal and deployment in railway
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
                 const healthRes = await fetch(`${apiUrl}/api/health`);
                 setIsFastApiConnected(healthRes.ok);
 
-                // 2. Tarik Data Master dari Database
                 const locRes = await fetch('/api/admin/locations');
                 const data = await locRes.json();
 
@@ -109,11 +105,9 @@ export default function AIForecastingPage() {
 
         setIsPredicting(true);
         setInsightTime(updateTimestamp());
+        setActiveAiTab('evaluasi'); // Reset tab ke default
 
         try {
-            // const res = await fetch("http://localhost:8000/api/forecast", {
-
-            // running lokal and deployment in railway
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
             const res = await fetch(`${apiUrl}/api/forecast`, {
                 method: "POST",
@@ -121,6 +115,7 @@ export default function AIForecastingPage() {
                 body: JSON.stringify({
                     province: filterProv === 'Semua Provinsi' ? "Semua Provinsi" : filterProv,
                     retailer: filterRetailerId === 'Semua Retailer' ? "Semua Retailer" : filterRetailerId,
+                    retailer_name: filterRetailerName,
                     product: filterProduct
                 })
             });
@@ -145,7 +140,6 @@ export default function AIForecastingPage() {
         }
     };
 
-    // --- LOGIKA PENENTUAN TARGET SCOPE DARI DROPDOWN ---
     let broadcastScope = 'GLOBAL';
     let broadcastLabel = 'Seluruh Nasional (Semua Manajer)';
 
@@ -185,44 +179,71 @@ export default function AIForecastingPage() {
         }
     };
 
-    // --- UX: ECHARTS FORECAST DIPERCANTIK ---
+    // FUNGSI MEMECAH JAWABAN AI MENJADI 2 BAGIAN
+    const parseAiResponse = (text: string) => {
+        if (!text) return { evaluasi: '', mitigasi: '' };
+
+        let evalText = text;
+        let mitText = "Mitigasi belum dikalkulasi oleh AI.";
+
+        if (text.includes('[EVALUASI]') && text.includes('[MITIGASI]')) {
+            const parts = text.split('[MITIGASI]');
+            evalText = parts[0].replace('[EVALUASI]', '').trim();
+            mitText = parts[1].trim();
+        }
+        return { evaluasi: evalText, mitigasi: mitText };
+    };
+
+    const parsedAiAnalysis = parseAiResponse(forecastData?.ai_analysis || "");
+
+    // ECHARTS FORECAST PREMIUM
     const trendChartOption = forecastData ? {
         tooltip: {
             trigger: 'axis',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            borderColor: '#E2E8F0',
-            padding: [12, 16],
-            textStyle: { color: '#0F172A', fontSize: 13 },
-            axisPointer: { type: 'line', lineStyle: { color: '#CBD5E1', type: 'dashed' } }
+            backgroundColor: '#ffffff',
+            borderColor: '#f1f5f9',
+            borderWidth: 1,
+            padding: [16, 20],
+            textStyle: { color: '#0F172A', fontSize: 13, fontWeight: '500' },
+            borderRadius: 16,
+            extraCssText: 'box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.1), 0 10px 15px -5px rgba(0, 0, 0, 0.04);',
+            axisPointer: { type: 'line', lineStyle: { color: '#cbd5e1', width: 2, type: 'dashed' } }
         },
         legend: {
-            data: ['Histori Aktual', 'Prediksi (AI Forecast)'],
-            bottom: 0,
+            data: ['Histori Aktual', 'Prediksi AI'],
+            bottom: '0%',
             icon: 'circle',
-            textStyle: { fontWeight: '600', color: '#64748B' }
+            itemGap: 24,
+            textStyle: { fontWeight: '700', color: '#64748b', fontSize: 12 }
         },
-        grid: { left: '3%', right: '4%', bottom: '20%', top: '8%', containLabel: true },
+        grid: { left: '3%', right: '8%', bottom: '20%', top: '8%', containLabel: true },
         xAxis: {
             type: 'category',
             boundaryGap: false,
             data: forecastData.chart.labels,
-            axisLine: { lineStyle: { color: '#E2E8F0' } },
+            axisLine: { show: false },
+            axisTick: { show: false },
             axisLabel: {
                 color: '#64748B',
                 fontWeight: '600',
-                margin: 12,
+                margin: 16,
                 interval: 0,
-                rotate: 45,
+                hideOverlap: false,
+                rotate: 0,
                 fontSize: 10,
-                lineHeight: 14
+                lineHeight: 16,
+                align: 'center'
             }
         },
         yAxis: {
             type: 'value',
-            splitLine: { lineStyle: { type: 'dashed', color: '#F1F5F9' } },
+            splitLine: { lineStyle: { type: 'dashed', color: '#f1f5f9', width: 1.5 } },
+            axisLine: { show: false },
+            axisTick: { show: false },
             axisLabel: {
-                color: '#94A3B8',
-                fontWeight: '600',
+                color: '#94a3b8',
+                fontWeight: '700',
+                fontSize: 11,
                 formatter: (val: number) => {
                     if (val >= 1000000) return (val / 1000000).toFixed(1) + 'M';
                     if (val >= 1000) return (val / 1000).toFixed(1) + 'k';
@@ -235,21 +256,35 @@ export default function AIForecastingPage() {
                 name: 'Histori Aktual',
                 type: 'line',
                 data: forecastData.chart.actual,
-                smooth: 0.4,
-                lineStyle: { width: 3, color: '#94A3B8' },
-                itemStyle: { color: '#94A3B8' },
+                smooth: 0.5,
+                lineStyle: { width: 3, color: '#94a3b8', type: 'solid' },
+                itemStyle: { color: '#94a3b8', borderWidth: 2, borderColor: '#fff' },
+                symbol: 'circle',
                 symbolSize: 8,
                 showSymbol: true
             },
             {
-                name: 'Prediksi (AI Forecast)',
+                name: 'Prediksi AI',
                 type: 'line',
                 data: forecastData.chart.predicted,
-                smooth: 0.4,
-                lineStyle: { width: 4, color: '#4f46e5', shadowColor: 'rgba(79, 70, 229, 0.3)', shadowBlur: 8, shadowOffsetY: 6 },
-                itemStyle: { color: '#ffffff', borderColor: '#4f46e5', borderWidth: 2 },
-                areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(79, 70, 229, 0.3)' }, { offset: 1, color: 'rgba(79, 70, 229, 0)' }]) },
-                symbolSize: 8,
+                smooth: 0.5,
+                lineStyle: {
+                    width: 4,
+                    color: '#4f46e5',
+                    shadowColor: 'rgba(79, 70, 229, 0.4)',
+                    shadowBlur: 14,
+                    shadowOffsetY: 8
+                },
+                itemStyle: { color: '#4f46e5', borderColor: '#ffffff', borderWidth: 3 },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(79, 70, 229, 0.35)' },
+                        { offset: 0.7, color: 'rgba(79, 70, 229, 0.05)' },
+                        { offset: 1, color: 'rgba(79, 70, 229, 0)' }
+                    ])
+                },
+                symbol: 'circle',
+                symbolSize: 10,
                 showSymbol: true
             }
         ]
@@ -274,7 +309,7 @@ export default function AIForecastingPage() {
                 </div>
             )}
 
-            {/* MODAL BROADCAST INTERNAL (PENGGANTI EMAIL) */}
+            {/* MODAL BROADCAST INTERNAL */}
             {showBroadcastModal && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-100">
@@ -298,7 +333,11 @@ export default function AIForecastingPage() {
                                 
 Berdasarkan analisis Machine Learning (Random Forest) dan AKSA AI yang dijalankan pada ${insightTime}, kami menemukan proyeksi data sebagai berikut:
 
-${forecastData?.ai_analysis?.replace(/[*_#]/g, '')}
+EVALUASI:
+${parsedAiAnalysis.evaluasi}
+
+TINDAKAN MITIGASI:
+${parsedAiAnalysis.mitigasi}
 
 Mohon segera lakukan penyesuaian operasional di wilayah Anda berdasarkan rekomendasi di atas. Laporan dapat diakses melalui portal Anda.
 
@@ -439,9 +478,25 @@ Admin Eksekutif - Aksa Analitika`}
             </div>
 
             {/* HASIL FORECAST & INSIGHT */}
-            <div className="bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col relative overflow-hidden z-10 min-h-[400px]">
+            <div className="bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col relative overflow-hidden z-10 min-h-[500px]">
 
-                {/* SAAT FAST API BELUM TERHUBUNG */}
+                {/* ANIMASI LOADING OVERLAY SAAT SEDANG PREDIKSI */}
+                {isPredicting && (
+                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm p-6 text-center animate-in fade-in duration-300 rounded-[40px]">
+                        <div className="relative mb-6">
+                            <div className="w-24 h-24 border-4 border-indigo-100 border-t-[#4f46e5] rounded-full animate-spin"></div>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <BrainCircuit className="text-[#4f46e5] animate-pulse" size={32} />
+                            </div>
+                        </div>
+                        <h3 className="text-2xl font-bold text-slate-900 mb-2 tracking-tight">Memproses Proyeksi AI</h3>
+                        <p className="text-sm font-medium text-slate-500 max-w-md animate-pulse">
+                            Menganalisis pola historis, menjalankan model Random Forest, dan merumuskan insight eksekutif...
+                        </p>
+                    </div>
+                )}
+
+                {/* SAAT FAST API BELUM TERHUBUNG & BELUM PREDIKSI */}
                 {!forecastData && !isPredicting && (
                     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 p-6 text-center">
                         <div className="bg-white p-6 rounded-full shadow-sm border border-slate-100 mb-4 animate-pulse">
@@ -475,7 +530,7 @@ Admin Eksekutif - Aksa Analitika`}
                                 <p className="text-sm text-slate-500 mt-1">Dihasilkan oleh model Random Forest & AKSA AI</p>
                             </div>
 
-                            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-[24px] border border-slate-100 shrink-0">
+                            <div className="flex items-center gap-5 bg-white p-5 rounded-[24px] border border-slate-200 shadow-sm shrink-0">
                                 <div>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Akurasi Model</p>
                                     <p className="text-xl font-black text-emerald-500">92.8%</p>
@@ -488,25 +543,64 @@ Admin Eksekutif - Aksa Analitika`}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 h-[350px] bg-white rounded-[32px] p-4 border border-slate-100 relative shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
-                                <ReactECharts option={trendChartOption} style={{ height: '100%', width: '100%' }} />
+                        {/* GRID STRUKTUR SEIMBANG */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+
+                            {/* CONTAINER GRAFIK PREMIUM */}
+                            <div className="lg:col-span-2 min-h-[440px] bg-white rounded-[32px] p-6 border border-slate-100 relative shadow-[0_4px_20px_rgba(0,0,0,0.02)] flex flex-col">
+                                <ReactECharts option={trendChartOption} style={{ height: '100%', width: '100%', flex: 1 }} />
                             </div>
 
-                            <div className="flex flex-col gap-4">
-                                <div className="flex-1 bg-gradient-to-b from-[#6A7BFA] to-[#4f46e5] rounded-[32px] p-6 text-white relative overflow-hidden shadow-[0_15px_30px_rgba(79,70,229,0.3)]">
-                                    <BrainCircuit className="absolute -right-4 -bottom-4 w-32 h-32 text-white opacity-10" />
+                            {/* CONTAINER AI INSIGHT DENGAN KLIK TABS */}
+                            <div className="flex flex-col min-h-[440px]">
+                                <div className="flex-1 bg-gradient-to-br from-[#4f46e5] to-[#3730a3] rounded-[32px] p-6 lg:p-8 text-white relative overflow-hidden shadow-[0_15px_30px_rgba(79,70,229,0.3)] flex flex-col">
+                                    <BrainCircuit className="absolute -right-6 -bottom-6 w-40 h-40 text-white opacity-5" />
+
                                     <div className="relative z-10 flex flex-col h-full">
-                                        <div className="flex items-center gap-2 mb-4 opacity-90"><Lightbulb size={20} /><h4 className="font-bold">Analisis Pakar AKSA AI</h4></div>
-                                        <p className="text-sm leading-relaxed font-medium opacity-95 flex-1 overflow-y-auto custom-scrollbar pr-2 whitespace-pre-line">
-                                            {forecastData.ai_analysis?.replace(/[*_#]/g, '')}
-                                        </p>
-                                        <button onClick={() => setShowBroadcastModal(true)} disabled={isBroadcasting} className="mt-6 w-full bg-white text-[#4f46e5] px-4 py-3 rounded-[16px] text-sm font-bold hover:bg-slate-50 transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-95">
-                                            <Send size={16} /> Teruskan ke Cabang
+                                        <div className="flex items-center gap-2 mb-4 opacity-90">
+                                            <div className="p-2 bg-white/10 rounded-xl backdrop-blur-sm">
+                                                <Lightbulb size={20} className="text-amber-300" />
+                                            </div>
+                                            <h4 className="font-bold text-lg tracking-wide">Analisis Pakar AI</h4>
+                                        </div>
+
+                                        {/* TABS (PILL BUTTONS) */}
+                                        <div className="flex bg-white/10 p-1 rounded-xl mb-4 shrink-0">
+                                            <button
+                                                onClick={() => setActiveAiTab('evaluasi')}
+                                                className={`flex-1 text-xs font-bold py-2.5 rounded-lg transition-all ${activeAiTab === 'evaluasi' ? 'bg-white text-[#4f46e5] shadow-sm' : 'text-white/70 hover:text-white'}`}
+                                            >
+                                                Evaluasi
+                                            </button>
+                                            <button
+                                                onClick={() => setActiveAiTab('mitigasi')}
+                                                className={`flex-1 text-xs font-bold py-2.5 rounded-lg transition-all ${activeAiTab === 'mitigasi' ? 'bg-white text-[#4f46e5] shadow-sm' : 'text-white/70 hover:text-white'}`}
+                                            >
+                                                Mitigasi
+                                            </button>
+                                        </div>
+
+                                        {/* ISI TABS (TEKS DIBUAT DENGAN SPASI LEGA) */}
+                                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-3">
+                                            {activeAiTab === 'evaluasi' ? (
+                                                <p className="text-sm leading-loose font-medium text-white/95 whitespace-pre-line animate-in fade-in">
+                                                    {parsedAiAnalysis.evaluasi}
+                                                </p>
+                                            ) : (
+                                                <p className="text-sm leading-loose font-medium text-white/95 whitespace-pre-line animate-in fade-in">
+                                                    {parsedAiAnalysis.mitigasi}
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* TOMBOL BROADCAST */}
+                                        <button onClick={() => setShowBroadcastModal(true)} disabled={isBroadcasting} className="mt-6 w-full bg-white text-[#4f46e5] px-4 py-3.5 rounded-[20px] text-sm font-bold hover:bg-slate-50 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.1)] hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-95 group">
+                                            <Send size={16} className="group-hover:translate-x-1 transition-transform" /> Teruskan ke Cabang
                                         </button>
                                     </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 )}

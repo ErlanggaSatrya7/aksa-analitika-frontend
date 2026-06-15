@@ -12,7 +12,11 @@ interface DBUser {
     retailerId?: string | null;
 }
 
-interface RetailerData { id: string; name: string; }
+interface RetailerData {
+    id: string;
+    name: string;
+    states?: string[];
+}
 
 export default function KelolaPenggunaPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -31,19 +35,17 @@ export default function KelolaPenggunaPage() {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    // FORM STATE (City & Kepala Cabang Dihapus)
+    // FORM STATE
     const [formData, setFormData] = useState({ fullName: '', email: '', role: 'STATE_ADMIN', state: '', retailer: '' });
 
-    // CRUD STATE (DETAIL, EDIT, SUSPEND, DELETE)
+    // CRUD STATE
     const [selectedUser, setSelectedUser] = useState<DBUser | null>(null);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-    // Edit Form (City Dihapus)
     const [editFormData, setEditFormData] = useState({ fullName: '', email: '', role: '', state: '', retailer: '' });
-
     const [toast, setToast] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -57,8 +59,8 @@ export default function KelolaPenggunaPage() {
             const resLocations = await fetch('/api/admin/locations');
             if (resLocations.ok) {
                 const dataLoc = await resLocations.json();
-                setMasterStates(dataLoc.states);
-                setMasterRetailers(dataLoc.retailers);
+                setMasterStates(dataLoc.states || []);
+                setMasterRetailers(dataLoc.retailers || []);
             }
         } catch (error) {
             console.error("Gagal sinkronisasi:", error);
@@ -78,6 +80,46 @@ export default function KelolaPenggunaPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // --- HELPER: MENGUBAH ANGKA (1000001) MENJADI NAMA BRAND (MATAHARI) ---
+    const getRetailerBrand = (rawId: string) => {
+        if (!rawId) return "Mitra Toko";
+        const brands: Record<string, string> = {
+            '1000001': 'Matahari',
+            '1000002': 'Ramayana',
+            '1000003': 'Sport Station',
+            '1000004': 'Transmart',
+            '1000005': 'Planet Sports',
+            '1000006': 'Foot Locker',
+            '1000007': 'Zalora',
+            '1000008': 'JD Sports',
+            '1000009': 'Adidas Official Store'
+        };
+
+        // Memastikan yang diambil hanya kode angkanya saja (ex: dari 1000001_BALI menjadi 1000001)
+        const prefix = rawId.split('_')[0];
+        return brands[prefix] || brands[rawId] || `Mitra Toko (${prefix})`;
+    };
+
+    // --- HELPER: FILTER DROPDOWN & HAPUS KOTA YANG GANDA ---
+    const getAvailableRetailers = (selectedState: string) => {
+        if (!selectedState) return [];
+        const filtered = masterRetailers.filter(r => {
+            if (r.states && r.states.length > 0) return r.states.includes(selectedState);
+            const stateFormatted = selectedState.replace(/\s+/g, '_').toUpperCase();
+            return r.id.includes(stateFormatted);
+        });
+
+        // Menghapus duplikat toko (Mengabaikan kota)
+        const uniqueBrands = new Map();
+        filtered.forEach(rt => {
+            const brandCode = rt.id.split('_')[0];
+            if (!uniqueBrands.has(brandCode)) {
+                uniqueBrands.set(brandCode, rt);
+            }
+        });
+        return Array.from(uniqueBrands.values());
+    };
+
     const filteredUsers = users.filter(user => {
         const matchSearch = (user.fullName?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || (user.email?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         let normalizedRole = 'Semua Peran';
@@ -91,10 +133,17 @@ export default function KelolaPenggunaPage() {
     const getRoleComponents = (user: DBUser) => {
         if (user.role === 'SUPER_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-purple-100 text-purple-700 text-[11px] font-bold rounded-md"><ShieldCheck size={12} /> Super Admin</span>, scope: 'Nasional (Semua Akses)' };
         if (user.role === 'STATE_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-teal-100 text-teal-700 text-[11px] font-bold rounded-md"><Building2 size={12} /> Admin Provinsi</span>, scope: user.assignedState ? `Provinsi ${user.assignedState}` : 'Provinsi Belum Diatur' };
+
+        // MURNI MENGAMBIL NAMA BRAND DAN PROVINSI SAJA (MENGABAIKAN KOTA)
         if (user.role === 'RETAILER_ADMIN') {
-            const foundRetailer = masterRetailers.find(r => r.id === user.retailerId);
-            return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: foundRetailer ? foundRetailer.name.toUpperCase() : 'Mitra Toko Belum Diatur' };
+            if (!user.retailerId) return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: 'Mitra Toko Belum Diatur' };
+
+            const brandName = getRetailerBrand(user.retailerId);
+            const displayName = user.assignedState ? `${brandName} - Provinsi ${user.assignedState}` : brandName;
+
+            return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: displayName };
         }
+
         return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-slate-100 text-slate-700 text-[11px] font-bold rounded-md"><UserCog size={12} /> Data Engineer</span>, scope: 'Infrastruktur Data' };
     };
 
@@ -110,8 +159,10 @@ export default function KelolaPenggunaPage() {
 
         setIsLoading(true);
         try {
-            const res = await fetch('/api/admin/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) });
+            const payload = { ...formData, retailerId: formData.retailer };
+            const res = await fetch('/api/admin/invite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
+
             if (res.ok) {
                 setToast({ type: 'success', message: 'Pengguna baru berhasil ditambahkan! Password default: 123' });
                 setFormData({ fullName: '', email: '', role: 'STATE_ADMIN', state: '', retailer: '' });
@@ -133,8 +184,10 @@ export default function KelolaPenggunaPage() {
 
         setIsLoading(true);
         try {
-            const res = await fetch('/api/admin/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: selectedUser.id, ...editFormData }) });
+            const payload = { id: selectedUser.id, ...editFormData, retailerId: editFormData.retailer };
+            const res = await fetch('/api/admin/users', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
+
             if (res.ok) {
                 setToast({ type: 'success', message: 'Data dan Hak Akses pengguna berhasil diperbarui.' });
                 loadAllData(); setTimeout(() => setIsEditModalOpen(false), 2000);
@@ -214,18 +267,14 @@ export default function KelolaPenggunaPage() {
                                         <td className="px-6 py-4 relative text-center">
                                             <button onClick={(e) => { e.stopPropagation(); setOpenDropdownId(openDropdownId === user.id ? null : user.id); }} className="p-2 text-slate-400 hover:text-[#6A7BFA] hover:bg-[#EDF2FE] rounded-xl transition-colors"><MoreVertical size={18} /></button>
 
-                                            {/* DROPDOWN MENU MASTER LENGKAP */}
                                             {openDropdownId === user.id && (
                                                 <div ref={dropdownRef} className="absolute right-10 top-1/2 -translate-y-1/2 w-52 bg-white border border-slate-100 rounded-[16px] shadow-[0_20px_50px_-15px_rgba(0,0,0,0.15)] z-[60] p-1.5 animate-in fade-in zoom-in-95">
                                                     <button onClick={() => { setSelectedUser(user); setIsDetailModalOpen(true); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-[#6A7BFA] rounded-[10px] transition-colors"><UserCog size={14} /> Detail Profil</button>
                                                     <button onClick={() => openEditModal(user)} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-amber-600 rounded-[10px] transition-colors"><Edit size={14} /> Edit Profil & Akses</button>
-
                                                     <div className="h-px bg-slate-100 my-1"></div>
-
                                                     <button onClick={() => { setSelectedUser(user); setIsSuspendModalOpen(true); setOpenDropdownId(null); }} className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold rounded-[10px] transition-colors ${user.status === 'ACTIVE' ? 'text-amber-600 hover:bg-amber-50' : 'text-emerald-600 hover:bg-emerald-50'}`}>
                                                         {user.status === 'ACTIVE' ? <><ShieldAlert size={14} /> Suspend Akun</> : <><CheckCircle2 size={14} /> Aktifkan Akun</>}
                                                     </button>
-
                                                     <button onClick={() => { setSelectedUser(user); setIsDeleteModalOpen(true); setOpenDropdownId(null); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-[10px] transition-colors mt-0.5">
                                                         <Trash2 size={14} /> Hapus Permanen
                                                     </button>
@@ -279,7 +328,13 @@ export default function KelolaPenggunaPage() {
                                 {editFormData.role === 'RETAILER_ADMIN' && (
                                     <div>
                                         <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
-                                        <div className="relative"><select required disabled={!editFormData.state} value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">{!editFormData.state ? "Pilih Provinsi Terlebih Dahulu" : masterRetailers.length === 0 ? "Belum ada data toko" : "Pilih Mitra Toko..."}</option>{masterRetailers.map((rt) => <option key={rt.id} value={rt.id}>{rt.name.toUpperCase()}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
+                                        <div className="relative">
+                                            <select required disabled={!editFormData.state} value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
+                                                <option value="">{!editFormData.state ? "Pilih Provinsi Terlebih Dahulu" : getAvailableRetailers(editFormData.state).length === 0 ? "Belum ada data toko" : "Pilih Mitra Toko..."}</option>
+                                                {getAvailableRetailers(editFormData.state).map((rt) => <option key={rt.id} value={rt.id}>{getRetailerBrand(rt.id)}</option>)}
+                                            </select>
+                                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -351,7 +406,7 @@ export default function KelolaPenggunaPage() {
                         </div>
                         <div className="bg-slate-50 rounded-[20px] p-5 border border-slate-100 space-y-4">
                             <div><p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status Akun</p><p className="text-sm font-bold text-slate-700">{selectedUser.status === 'ACTIVE' ? 'Aktif Beroperasi' : 'Ditangguhkan (Suspended)'}</p></div>
-                            <div><p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cakupan Wilayah</p><p className="text-sm font-bold text-slate-700 flex items-center gap-2"><MapPin size={14} className="text-[#6A7BFA]" /> {getRoleComponents(selectedUser).scope}</p></div>
+                            <div><p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cakupan Wilayah</p><p className="text-sm font-bold text-slate-700 flex items-start gap-2"><MapPin size={14} className="text-[#6A7BFA] shrink-0 mt-0.5" /> <span className="leading-relaxed">{getRoleComponents(selectedUser).scope}</span></p></div>
                         </div>
                     </div>
                 </div>
@@ -383,8 +438,18 @@ export default function KelolaPenggunaPage() {
                                     <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
                                     <div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label><div className="relative"><select required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>
 
-                                    {formData.role === 'RETAILER_ADMIN' && (<div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
-                                        <div className="relative"><select required disabled={!formData.state} value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12"><option value="">{!formData.state ? "Pilih Provinsi Terlebih Dahulu" : masterRetailers.length === 0 ? "Belum ada data toko di provinsi ini" : "Pilih Mitra Toko..."}</option>{masterRetailers.map((rt) => (<option key={rt.id} value={rt.id}>{rt.name.toUpperCase()}</option>))}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>)}
+                                    {formData.role === 'RETAILER_ADMIN' && (
+                                        <div>
+                                            <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
+                                            <div className="relative">
+                                                <select required disabled={!formData.state} value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12">
+                                                    <option value="">{!formData.state ? "Pilih Provinsi Terlebih Dahulu" : getAvailableRetailers(formData.state).length === 0 ? "Belum ada data toko di provinsi ini" : "Pilih Mitra Toko..."}</option>
+                                                    {getAvailableRetailers(formData.state).map((rt) => (<option key={rt.id} value={rt.id}>{getRetailerBrand(rt.id)}</option>))}
+                                                </select>
+                                                <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             <div className="bg-blue-50 border border-blue-100 p-3.5 rounded-[16px] flex items-start gap-3"><Lock size={16} className="text-blue-600 shrink-0 mt-0.5" /><p className="text-xs font-semibold text-blue-800 leading-relaxed">Kata sandi awal pengguna baru diset otomatis menjadi <span className="font-bold bg-white px-1.5 py-0.5 rounded border border-blue-200">123</span>.</p></div>

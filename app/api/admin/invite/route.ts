@@ -5,26 +5,40 @@ import bcrypt from 'bcryptjs';
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        // Catatan: 'retailer' di sini sekarang berisi ID (UUID), bukan nama toko!
         const { email, fullName, role, state, city, retailer } = body;
 
         // 1. Cek User
         const existingUser = await prisma.users.findUnique({ where: { email } });
         if (existingUser) return NextResponse.json({ error: "Email sudah terdaftar." }, { status: 400 });
 
-        // 2. Validasi ID Retailer jika role adalah RETAILER_ADMIN
+        // 2. Logika Pencarian Pintar Berdasarkan Brand + Provinsi
         let retailerIdToSave = null;
         if (role === 'RETAILER_ADMIN' && retailer) {
-            // PERBAIKAN DI SINI: Cari berdasarkan "id", bukan "name"
-            const foundRetailer = await prisma.retailers.findUnique({
-                where: { id: retailer } // <--- KUNCI PENYELESAIAN MASALAH
+            // Ubah "Jawa Barat" menjadi "JAWA_BARAT" agar cocok dengan format ID Supabase Anda
+            const stateUpper = state.toUpperCase().replace(/\s+/g, '_');
+
+            // Cari baris yang kodenya cocok DAN ID-nya mengandung nama provinsi yang dipilih
+            const foundRetailer = await prisma.retailers.findFirst({
+                where: {
+                    name: retailer, // Contoh: "1000001"
+                    id: {
+                        contains: stateUpper // Contoh: "JAWA_BARAT"
+                    }
+                }
             });
 
-            // Jika ID-nya memang ada di database, simpan ID tersebut
             if (foundRetailer) {
-                retailerIdToSave = foundRetailer.id;
+                retailerIdToSave = foundRetailer.id; // Menyimpan ID lengkap (ex: 1000001_JAWA_BARAT_-)
             } else {
-                return NextResponse.json({ error: "Data Retailer tidak ditemukan di database." }, { status: 400 });
+                // Fallback jika cabang spesifik provinsi tidak ketemu, ambil baris brand apa saja agar tidak error
+                const fallbackRetailer = await prisma.retailers.findFirst({
+                    where: { name: retailer }
+                });
+                if (fallbackRetailer) {
+                    retailerIdToSave = fallbackRetailer.id;
+                } else {
+                    return NextResponse.json({ error: "Data Retailer tidak ditemukan di database." }, { status: 400 });
+                }
             }
         }
 
@@ -41,7 +55,7 @@ export async function POST(request: Request) {
                 password: hashedPassword,
                 assignedState: (role !== 'SUPER_ADMIN' && role !== 'DATA_ENGINEER') ? state : null,
                 assignedCity: (role === 'CITY_ADMIN' || role === 'RETAILER_ADMIN') ? city : null,
-                retailerId: retailerIdToSave, // Masukkan ID ke kolom relasi
+                retailerId: retailerIdToSave,
             },
         });
 

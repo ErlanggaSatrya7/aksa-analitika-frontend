@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// Mengaktifkan force-dynamic agar pool koneksi Prisma selalu segar saat Hot Reload / Refresh halaman
+export const dynamic = 'force-dynamic';
+
+// =====================================================================
 // 1. FUNGSI GET (Membaca / Menampilkan Data User di Tabel)
+// =====================================================================
 export async function GET() {
     try {
         const users = await prisma.users.findMany({
@@ -25,16 +30,50 @@ export async function GET() {
     }
 }
 
+// =====================================================================
 // 2. FUNGSI PUT (Mengubah Data Diri & Akses Wilayah / Role User)
+// =====================================================================
 export async function PUT(request: Request) {
     try {
         const body = await request.json();
-        // Sekarang backend kita menerima parameter fullName dan email
         const { id, fullName, email, role, state, city, retailer } = body;
 
         if (!id) return NextResponse.json({ error: "ID pengguna diperlukan." }, { status: 400 });
 
-        // Update database secara komprehensif
+        // Logika Akal Pintar untuk Menyelaraskan ID Retailer (Sama seperti di fungsi invite)
+        let retailerIdToSave = null;
+        if (role === 'RETAILER_ADMIN' && retailer) {
+            // Ambil kode angka bersih dari variabel retailer (misal mengekstrak "1000002" dari "1000002_DKI_JAKARTA")
+            const brandCode = retailer.split('_')[0];
+            const stateUpper = state ? state.toUpperCase().replace(/\s+/g, '_') : '';
+
+            // Cari toko yang kodenya sesuai DAN kolom ID-nya mengandung nama Provinsi yang dipilih user
+            const foundRetailer = await prisma.retailers.findFirst({
+                where: {
+                    name: brandCode,
+                    id: {
+                        contains: stateUpper
+                    }
+                }
+            });
+
+            if (foundRetailer) {
+                retailerIdToSave = foundRetailer.id; // Menyimpan ID valid (ex: 1000002_DKI_JAKARTA_-)
+            } else {
+                // Fallback darurat jika tidak ketemu yang spesifik provinsi, gunakan ID asal agar tidak break foreign key
+                const fallbackRetailer = await prisma.retailers.findFirst({
+                    where: {
+                        OR: [
+                            { id: retailer },
+                            { name: brandCode }
+                        ]
+                    }
+                });
+                if (fallbackRetailer) retailerIdToSave = fallbackRetailer.id;
+            }
+        }
+
+        // Jalankan update database secara komprehensif ke Supabase
         await prisma.users.update({
             where: { id },
             data: {
@@ -43,14 +82,13 @@ export async function PUT(request: Request) {
                 role: role,
                 assignedState: (role !== 'SUPER_ADMIN' && role !== 'DATA_ENGINEER') ? state : null,
                 assignedCity: (role === 'CITY_ADMIN' || role === 'RETAILER_ADMIN') ? city : null,
-                retailerId: (role === 'RETAILER_ADMIN') ? retailer : null,
+                retailerId: retailerIdToSave,
             }
         });
 
         return NextResponse.json({ success: true, message: "Data dan akses berhasil diperbarui." });
     } catch (error: any) {
         console.error("Gagal update data user:", error);
-        // Tangkap error jika email sudah dipakai orang lain
         if (error.code === 'P2002') {
             return NextResponse.json({ error: "Email sudah digunakan oleh akun lain." }, { status: 400 });
         }
@@ -58,7 +96,9 @@ export async function PUT(request: Request) {
     }
 }
 
+// =====================================================================
 // 3. FUNGSI PATCH (Suspend atau Mengaktifkan Kembali Akun User)
+// =====================================================================
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
@@ -78,7 +118,9 @@ export async function PATCH(request: Request) {
     }
 }
 
+// =====================================================================
 // 4. FUNGSI DELETE (Menghapus Akun Permanen)
+// =====================================================================
 export async function DELETE(request: Request) {
     try {
         const body = await request.json();
@@ -86,7 +128,7 @@ export async function DELETE(request: Request) {
 
         if (!id) return NextResponse.json({ error: "ID pengguna diperlukan." }, { status: 400 });
 
-        // PENTING: Jika User punya notifikasi, kita harus hapus notifikasinya dulu sebelum menghapus akunnya (Menghindari foreign key error)
+        // Hapus child-data (notifikasi) terlebih dahulu untuk menghindari Foreign Key Constraint error
         await prisma.notifications.deleteMany({
             where: { userId: id }
         });

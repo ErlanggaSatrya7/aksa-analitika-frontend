@@ -1,16 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
 
 const prismaClientSingleton = () => {
-    return new PrismaClient();
-};
+    return new PrismaClient()
+}
 
+// Mencegah Next.js membuka terlalu banyak koneksi saat Hot Reload (Development)
 declare global {
-    var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>;
+    var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
 }
 
-// Export named 'prisma' agar tidak merusak import di file lain
-export const prisma = globalThis.prismaGlobal ?? prismaClientSingleton();
+export const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
 
-if (process.env.NODE_ENV !== 'production') {
-    globalThis.prismaGlobal = prisma;
-}
+if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
