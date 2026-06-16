@@ -9,7 +9,7 @@ export async function GET() {
             summaryAgg,
             stateAgg,
             productAgg,
-            methodAgg, // Prisma otomatis mengenali ini sebagai array
+            methodAgg,
             rawRetailerShare
         ] = await Promise.all([
             prisma.sales_data.aggregate({
@@ -27,7 +27,6 @@ export async function GET() {
                 orderBy: { _sum: { unitsSold: 'desc' } },
                 take: 5
             }),
-            // TAMBAHKAN 'as any' ATAU 'as unknown as ...' JIKA TS MASIH KOMPLAIN
             prisma.sales_data.groupBy({
                 by: ['salesMethod'],
                 _sum: { unitsSold: true },
@@ -48,7 +47,6 @@ export async function GET() {
 
         const consolidatedMap = new Map<string, number>();
 
-        // Tambahkan Kamus ini di dalam fungsi GET sebelum melakukan forEach
         const retailerMap: Record<string, string> = {
             "1000001": "Adidas Official Store",
             "1000002": "Matahari",
@@ -59,18 +57,13 @@ export async function GET() {
         };
 
         rawRetailerShare.forEach(item => {
-            // 1. Ambil ID mentah (jika ada format "1000001_BANTEN_...")
             const rawId = item.retailerId.split('_')[0];
-
-            // 2. Tentukan nama: Cek di Kamus > Cek DB > Default ke ID
             const detail = retailersMaster.find(r => r.id === rawId);
             const finalBrandName = retailerMap[rawId] || detail?.name || `Retailer ${rawId}`;
 
-            // 3. Masukkan ke map
             const currentTotal = consolidatedMap.get(finalBrandName) || 0;
             consolidatedMap.set(finalBrandName, currentTotal + Number(item._sum.unitsSold || 0));
         });
-
 
         const retailerShare = Array.from(consolidatedMap.entries())
             .map(([name, value]) => ({ name, value }))
@@ -81,8 +74,13 @@ export async function GET() {
             _max: { invoiceDate: true }
         });
 
-        const datesData = await prisma.sales_data.findMany({
-            select: { invoiceDate: true, unitsSold: true }
+        // ==========================================
+        // PERBAIKAN: Gunakan groupBy alih-alih findMany
+        // Ini akan menurunkan beban memori secara drastis
+        // ==========================================
+        const datesData = await prisma.sales_data.groupBy({
+            by: ['invoiceDate'],
+            _sum: { unitsSold: true }
         });
 
         const labels: string[] = [];
@@ -104,12 +102,13 @@ export async function GET() {
                 currentDate.setMonth(currentDate.getMonth() + 1);
             }
 
+            // Memproses data yang sudah digabungkan oleh database
             datesData.forEach(row => {
                 if (row.invoiceDate) {
                     const date = new Date(row.invoiceDate);
                     const monthKey = `${monthNames[date.getMonth()]} '${date.getFullYear().toString().slice(-2)}`;
                     if (trendMap.has(monthKey)) {
-                        trendMap.set(monthKey, trendMap.get(monthKey)! + Number(row.unitsSold || 0));
+                        trendMap.set(monthKey, trendMap.get(monthKey)! + Number(row._sum.unitsSold || 0));
                     }
                 }
             });
@@ -144,7 +143,6 @@ export async function GET() {
             mapDistribution,
             topProvinces,
             trendLine: { labels, values },
-            // salesMethod: methodAgg.map(m => ({ name: m.salesMethod, value: Number(m._sum.unitsSold || 0) })),
             salesMethod: methodAgg.map((m: any) => ({
                 name: m.salesMethod,
                 value: Number(m._sum.unitsSold || 0)
