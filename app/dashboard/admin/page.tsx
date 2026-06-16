@@ -70,10 +70,20 @@ export default function AdminDashboardPage() {
                 }
 
                 if (mapData && mapData.features) {
+                    // MENGGUNAKAN TRANSLATOR LENGKAP DARI FILE MAP YANG BERHASIL
                     const geojsonNameTranslator: Record<string, string> = {
-                        "ACEH": "NAD ACEH", "BANGKA-BELITUNG": "BANGKA BELITUNG",
-                        "JAKARTA RAYA": "DKI JAKARTA", "YOGYAKARTA": "DI YOGYAKARTA",
-                        "NUSA TENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT"
+                        "IRIAN JAYA TIMUR": "PAPUA", "IRIAN JAYA TENGAH": "PAPUA", "IRIAN JAYA BARAT": "PAPUA",
+                        "NUSATENGGARA BARAT": "NTB", "NUSA TENGGARA TIMUR": "NTT", "DAERAH ISTIMEWA YOGYAKARTA": "DI YOGYAKARTA",
+                        "PROBANTEN": "BANTEN", "DI. ACEH": "NAD ACEH", "JAWA TENGAH": "JAWA TENGAH", "JAWA TIMUR": "JAWA TIMUR",
+                        "MALUKU UTARA": "MALUKU UTARA", "MALUKU": "MALUKU", "KALIMANTAN SELATAN": "KALIMANTAN SELATAN",
+                        "KALIMANTAN BARAT": "KALIMANTAN BARAT", "SULAWESI SELATAN": "SULAWESI SELATAN", "DKI JAKARTA": "DKI JAKARTA",
+                        "JAWA BARAT": "JAWA BARAT", "GORONTALO": "GORONTALO", "SULAWESI TENGGARA": "SULAWESI TENGGARA",
+                        "RIAU": "RIAU", "SULAWESI TENGAH": "SULAWESI TENGAH", "KALIMANTAN TIMUR": "KALIMANTAN TIMUR",
+                        "SULAWESI UTARA": "SULAWESI UTARA", "SUMATERA UTARA": "SUMATERA UTARA", "BANGKA BELITUNG": "BANGKA BELITUNG",
+                        "SUMATERA BARAT": "SUMATERA BARAT", "KALIMANTAN TENGAH": "KALIMANTAN TENGAH", "SUMATERA SELATAN": "SUMATERA SELATAN",
+                        "JAMBI": "JAMBI", "LAMPUNG": "LAMPUNG", "BENGKULU": "BENGKULU", "SULAWESI BARAT": "SULAWESI BARAT",
+                        "KALIMANTAN UTARA": "KALIMANTAN UTARA", "KEPULAUAN RIAU": "KEPULAUAN RIAU", "BALI": "BALI", "KEP. BANGKA BELITUNG": "BANGKA BELITUNG",
+                        "KEP. RIAU": "KEPULAUAN RIAU", "KEPRI": "KEPULAUAN RIAU"
                     };
 
                     const userStateUpper = userState.toUpperCase();
@@ -121,7 +131,11 @@ export default function AdminDashboardPage() {
     // ================== ECHARTS CONFIGURATIONS ==================
 
     const mapOption = useMemo(() => {
-        const mapData = dashboardData?.mapDistribution || [];
+        // PERBAIKAN: Normalisasi nama data dari API menjadi huruf kapital agar cocok dengan GeoJSON
+        const mapData = (dashboardData?.mapDistribution || []).map((d: any) => ({
+            ...d,
+            name: d.name ? d.name.toUpperCase() : ""
+        }));
 
         return {
             backgroundColor: 'transparent',

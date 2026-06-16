@@ -86,12 +86,16 @@ model sales_data {
   @@index([region, state]) // Index city sudah dihapus
 }
 
+// ==========================================
+// 3. TABEL PENGAJUAN LOGISTIK (BARU)
+// ==========================================
 model logistic_requests {
   id              String         @id @default(uuid())
   retailerId      String
+  state           String         // DITAMBAHKAN: Untuk memfilter inbox Regional
   productCategory String
   qtyRequested    Int
-  status          LogisticStatus @default(PENDING_CITY)
+  status          LogisticStatus @default(PENDING_REGION)
   createdAt       DateTime       @default(now()) @db.Timestamptz(6)
   retailer        retailers      @relation(fields: [retailerId], references: [id])
 }
@@ -131,11 +135,13 @@ model model_metrics {
   dataset     dataset_uploads? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 }
 
+// ==========================================
+// ENUMS (SUDAH DIBERSIHKAN)
+// ==========================================
 enum Role {
   DATA_ENGINEER
   SUPER_ADMIN
   STATE_ADMIN
-  CITY_ADMIN
   RETAILER_ADMIN
 }
 
@@ -146,9 +152,9 @@ enum UserStatus {
 }
 
 enum LogisticStatus {
-  PENDING_CITY
-  APPROVED_CITY
-  APPROVED_STATE
+  PENDING_REGION
+  REJECTED_REGION
+  PENDING_CENTER
+  REJECTED_CENTER
   APPROVED_CENTER
-  REJECTED
 }

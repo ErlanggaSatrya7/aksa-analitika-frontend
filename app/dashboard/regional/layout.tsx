@@ -463,7 +463,8 @@ export default function ProvinceLayout({ children }: { children: React.ReactNode
                 {/* AI CHATBOT KHUSUS ADMIN REGIONAL */}
                 <div className="fixed bottom-6 right-4 sm:right-6 lg:bottom-10 lg:right-10 z-[80] flex flex-col items-end">
                     {isChatOpen && (
-                        <div className="bg-white w-[calc(100vw-32px)] sm:w-[380px] lg:w-[440px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[550px] lg:h-[650px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]">
+                        <div className="bg-white w-[calc(100vw-32px)] sm:w-[380px] lg:w-[440px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[70vh] max-h-[600px] animate-in slide-in-from-bottom-8 duration-500...">
+                        {/* <div className="bg-white w-[calc(100vw-32px)] sm:w-[380px] lg:w-[440px] rounded-[32px] lg:rounded-[40px] shadow-2xl border border-slate-200 mb-4 overflow-hidden flex flex-col h-[550px] lg:h-[650px] animate-in slide-in-from-bottom-8 duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"> */}
                             <div className="bg-gradient-to-r from-[#6A7BFA] to-[#4f46e5] p-5 flex items-center justify-between text-white shadow-md shrink-0">
                                 <div className="flex items-center gap-3">
                                     <Bot size={26} />
