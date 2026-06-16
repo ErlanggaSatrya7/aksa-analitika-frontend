@@ -1,7 +1,11 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Database, FolderOpen, Eye, Download, FileText, Calendar, HardDrive, X, FileSpreadsheet, Trash2, CloudUpload, AlertTriangle, Loader2, Search, Filter, Clock, CheckCircle2, Sparkles } from 'lucide-react';
+import {
+    Database, FolderOpen, Eye, Download, FileText, Calendar, HardDrive,
+    X, FileSpreadsheet, Trash2, CloudUpload, AlertTriangle, Loader2,
+    Search, Filter, Clock, CheckCircle2, Sparkles, ServerCrash
+} from 'lucide-react';
 
 export default function DatasetCatalogPage() {
     // State Logika UI
@@ -140,25 +144,25 @@ export default function DatasetCatalogPage() {
                             Anda akan menghapus: <br />
                             <div className="max-h-24 overflow-y-auto mt-2 mb-4 custom-scrollbar">
                                 {deleteTargets.map((file) => (
-                                    <span key={file.id} className="inline-block m-1 px-3 py-1 bg-slate-100 text-slate-700 font-mono text-xs rounded-lg truncate max-w-[90%]">
+                                    <span key={file.id} className="inline-block m-1 px-3 py-1.5 bg-slate-100 text-slate-700 font-mono text-xs rounded-lg truncate max-w-[90%] border border-slate-200">
                                         {file.fileName}
                                     </span>
                                 ))}
                             </div>
-                            <div className="bg-amber-50 text-amber-800 p-4 rounded-2xl border border-amber-100 text-left flex gap-3 items-start shadow-sm">
+                            <div className="bg-amber-50 text-amber-800 p-4 rounded-2xl border border-amber-200 text-left flex gap-3 items-start shadow-sm">
                                 <AlertTriangle size={20} className="shrink-0 mt-0.5 text-amber-600" />
                                 <div>
-                                    <strong className="font-bold block mb-1">Peringatan Kritis (Cascade Delete):</strong>
+                                    <strong className="font-bold block mb-1 text-amber-900">Peringatan Kritis (Cascade Delete)</strong>
                                     Menghapus file ini juga akan otomatis menghancurkan seluruh <strong>baris data penjualan</strong> yang terkait di Database. Tindakan ini tidak dapat dibatalkan.
                                 </div>
                             </div>
                         </div>
 
                         <div className="flex gap-3 w-full">
-                            <button onClick={() => setDeleteTargets([])} disabled={isDeleting} className="flex-1 py-3.5 px-4 bg-white border-2 border-slate-200 text-slate-600 font-bold rounded-[40px] hover:bg-slate-50 hover:text-slate-800 transition-colors disabled:opacity-50 active:scale-95">
+                            <button onClick={() => setDeleteTargets([])} disabled={isDeleting} className="flex-1 py-3.5 px-4 bg-white border border-slate-200 text-slate-600 font-bold rounded-[40px] hover:bg-slate-50 hover:text-slate-800 transition-colors disabled:opacity-50 active:scale-95">
                                 Batal
                             </button>
-                            <button onClick={executeDelete} disabled={isDeleting} className="flex-1 py-3.5 px-4 bg-red-500 border-2 border-red-500 text-white font-bold rounded-[40px] hover:bg-red-600 hover:border-red-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 shadow-[0_8px_20px_rgba(239,68,68,0.3)] active:scale-95">
+                            <button onClick={executeDelete} disabled={isDeleting} className="flex-1 py-3.5 px-4 bg-red-500 border border-red-500 text-white font-bold rounded-[40px] hover:bg-red-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 shadow-[0_8px_20px_rgba(239,68,68,0.3)] active:scale-95">
                                 {isDeleting ? <><Loader2 size={18} className="animate-spin" /> Menghapus...</> : <><Trash2 size={18} /> Ya, Hapus Data</>}
                             </button>
                         </div>
@@ -171,11 +175,11 @@ export default function DatasetCatalogPage() {
                 <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-indigo-50 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
                 <div className="relative z-10">
                     <div className="flex items-center gap-2 mb-3 bg-indigo-50 w-fit px-3 py-1.5 rounded-full border border-indigo-100">
-                        <Sparkles size={14} className="text-indigo-500" />
+                        <Database size={14} className="text-indigo-500" />
                         <span className="text-xs font-bold tracking-wide uppercase text-indigo-600">Dataset Registry</span>
                     </div>
                     <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Arsip Dataset Historis</h2>
-                    <p className="text-sm text-slate-500 max-w-lg">
+                    <p className="text-sm text-slate-500 max-w-lg leading-relaxed">
                         Katalog direktori untuk seluruh file transaksi yang telah berhasil di-ingest ke dalam sistem. Anda dapat memantau, menghapus, atau melihat sampel data aktual.
                     </p>
                 </div>
@@ -190,30 +194,33 @@ export default function DatasetCatalogPage() {
 
             {/* TABEL DAFTAR FILE ARSIP */}
             <div className="bg-white rounded-[40px] border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.03)] overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100 fill-mode-both">
-                <div className="p-6 lg:p-8 border-b border-slate-100">
+                <div className="p-6 lg:p-8 border-b border-slate-100 bg-slate-50/50">
                     <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                         <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-[#EDF2FE] rounded-2xl text-[#4f46e5]"><FolderOpen size={20} /></div>
-                            <h3 className="font-bold text-xl text-slate-900">Manajemen File Database</h3>
+                            <div className="p-3 bg-white rounded-2xl text-[#4f46e5] shadow-sm border border-slate-100"><FolderOpen size={20} /></div>
+                            <div>
+                                <h3 className="font-bold text-xl text-slate-900 tracking-tight">Manajemen File Database</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">Total {filteredFiles.length} dataset tersimpan di server.</p>
+                            </div>
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                             {selectedFileIds.length > 0 ? (
-                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-[#EDF2FE] px-4 py-2.5 rounded-[20px] animate-in fade-in slide-in-from-right-4 border border-[#6A7BFA]/20">
-                                    <span className="text-sm font-bold text-[#4f46e5]">{selectedFileIds.length} file terpilih</span>
+                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-indigo-50 px-4 py-2.5 rounded-[20px] animate-in fade-in slide-in-from-right-4 border border-indigo-200">
+                                    <span className="text-sm font-bold text-indigo-700">{selectedFileIds.length} file terpilih</span>
                                     <button onClick={() => setDeleteTargets(rawFileList.filter(f => selectedFileIds.includes(f.id)))} className="flex items-center gap-1.5 text-xs font-bold text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-full transition-colors shadow-sm active:scale-95">
                                         <Trash2 size={14} /> Hapus Massal
                                     </button>
                                 </div>
                             ) : (
-                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-[20px] px-4 py-2.5 focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/20 transition-all flex-1 sm:w-64">
+                                <div className="flex items-center bg-white border border-slate-200 rounded-[20px] px-4 py-2.5 focus-within:border-[#4f46e5] focus-within:ring-2 focus-within:ring-[#4f46e5]/20 transition-all flex-1 sm:w-72 shadow-sm">
                                     <Search size={16} className="text-slate-400 mr-2 shrink-0" />
                                     <input
                                         type="text"
-                                        placeholder="Cari nama file..."
+                                        placeholder="Cari nama file dataset..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none w-full placeholder:font-medium"
+                                        className="bg-transparent text-sm font-semibold text-slate-700 focus:outline-none w-full placeholder:font-medium placeholder:text-slate-400"
                                     />
                                 </div>
                             )}
@@ -221,9 +228,9 @@ export default function DatasetCatalogPage() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto custom-scrollbar min-h-[300px]">
+                <div className="overflow-x-auto custom-scrollbar min-h-[400px]">
                     <table className="w-full text-left border-collapse whitespace-nowrap">
-                        <thead className="bg-slate-50/80">
+                        <thead className="bg-slate-50 border-b border-slate-100">
                             <tr>
                                 <th className="p-5 pl-8 w-10">
                                     <input
@@ -234,7 +241,7 @@ export default function DatasetCatalogPage() {
                                     />
                                 </th>
                                 <th className="p-5 font-bold text-slate-400 text-[11px] uppercase tracking-widest">Nama File</th>
-                                <th className="p-5 font-bold text-slate-400 text-[11px] uppercase tracking-widest">Tanggal & Jam Upload</th>
+                                <th className="p-5 font-bold text-slate-400 text-[11px] uppercase tracking-widest">Waktu Upload</th>
                                 <th className="p-5 font-bold text-slate-400 text-[11px] uppercase tracking-widest text-right">Kapasitas DB</th>
                                 <th className="p-5 font-bold text-slate-400 text-[11px] uppercase tracking-widest text-center">Uploader</th>
                                 <th className="p-5 pr-8 font-bold text-slate-400 text-[11px] uppercase tracking-widest text-center">Aksi</th>
@@ -243,11 +250,16 @@ export default function DatasetCatalogPage() {
                         <tbody className="text-sm">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="p-12 text-center text-slate-500 font-medium animate-pulse">Memuat daftar file dari server...</td>
+                                    <td colSpan={6} className="p-16 text-center">
+                                        <div className="flex flex-col items-center justify-center text-indigo-500 gap-3">
+                                            <Loader2 size={32} className="animate-spin" />
+                                            <span className="font-bold text-slate-500 uppercase tracking-widest text-xs">Menyinkronkan Server...</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             ) : filteredFiles.length > 0 ? (
                                 filteredFiles.map((file) => (
-                                    <tr key={file.id} className={`border-b border-slate-50 transition-colors ${selectedFileIds.includes(file.id) ? 'bg-[#EDF2FE]/50' : 'hover:bg-[#EDF2FE]/30'}`}>
+                                    <tr key={file.id} className={`border-b border-slate-50 transition-colors ${selectedFileIds.includes(file.id) ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}`}>
                                         <td className="p-5 pl-8">
                                             <input
                                                 type="checkbox"
@@ -256,25 +268,29 @@ export default function DatasetCatalogPage() {
                                                 className="w-4 h-4 text-[#4f46e5] bg-white border-slate-300 rounded focus:ring-[#4f46e5] cursor-pointer"
                                             />
                                         </td>
-                                        <td className="p-5 flex items-center gap-3">
-                                            <FileText size={18} className={file.fileName.includes('xlsx') ? 'text-emerald-500' : 'text-blue-500'} />
-                                            <span className="font-semibold text-slate-800">{file.fileName}</span>
+                                        <td className="p-5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-slate-100 rounded-lg">
+                                                    <FileText size={18} className={file.fileName.includes('xlsx') ? 'text-emerald-500' : 'text-blue-500'} />
+                                                </div>
+                                                <span className="font-bold text-slate-800">{file.fileName}</span>
+                                            </div>
                                         </td>
                                         <td className="p-5">
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2 text-slate-700 font-medium">
-                                                    <Calendar size={14} className="text-[#6A7BFA]" />
+                                                    <Calendar size={14} className="text-slate-400" />
                                                     {new Date(file.uploadedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                 </div>
-                                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 pl-[22px] font-semibold">
+                                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 pl-6 font-semibold">
                                                     <Clock size={10} />
                                                     {new Date(file.uploadedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="p-5 text-right">
-                                            <p className="font-bold text-slate-700">{file.fileSize || ""}</p>
-                                            <p className="text-[11px] text-slate-400 mt-0.5">{file.totalRows?.toLocaleString('id-ID')} Baris</p>
+                                            <p className="font-bold text-slate-700">{file.fileSize || "N/A"}</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5 font-medium">{file.totalRows?.toLocaleString('id-ID')} Baris</p>
                                         </td>
                                         <td className="p-5 text-center">
                                             <span className="inline-flex items-center bg-slate-100 text-slate-600 text-[11px] font-bold px-3 py-1.5 rounded-full border border-slate-200">
@@ -282,20 +298,24 @@ export default function DatasetCatalogPage() {
                                             </span>
                                         </td>
                                         <td className="p-5 pr-8">
-                                            <div className="flex items-center justify-center gap-1.5">
-                                                <button onClick={() => handlePreview(file)} className="p-2 text-slate-400 hover:text-[#4f46e5] hover:bg-[#EDF2FE] rounded-xl transition-all" title="Preview Data Lengkap"><Eye size={18} /></button>
-                                                <button onClick={() => setDeleteTargets([file])} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Hapus File & Seluruh Datanya"><Trash2 size={18} /></button>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button onClick={() => handlePreview(file)} className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-transparent hover:border-indigo-100 shadow-sm" title="Preview Data Lengkap">
+                                                    <Eye size={18} />
+                                                </button>
+                                                <button onClick={() => setDeleteTargets([file])} className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all border border-transparent hover:border-rose-100 shadow-sm" title="Hapus File & Seluruh Datanya">
+                                                    <Trash2 size={18} />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="p-12 text-center">
+                                    <td colSpan={6} className="p-16 text-center">
                                         <div className="flex flex-col items-center justify-center">
-                                            <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mb-4"><Search size={32} /></div>
-                                            <h4 className="font-bold text-lg text-slate-800 mb-1">Data tidak ditemukan</h4>
-                                            <p className="text-sm text-slate-500 max-w-sm">Belum ada file dataset yang diupload ke dalam database.</p>
+                                            <div className="w-20 h-20 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mb-4"><Search size={36} /></div>
+                                            <h4 className="font-bold text-xl text-slate-800 mb-1">Data tidak ditemukan</h4>
+                                            <p className="text-sm text-slate-500 max-w-sm">Belum ada file dataset yang diupload ke dalam database atau pencarian tidak cocok.</p>
                                         </div>
                                     </td>
                                 </tr>
@@ -305,65 +325,87 @@ export default function DatasetCatalogPage() {
                 </div>
             </div>
 
-            {/* MODAL POP-UP PREVIEW DATA FULL 12 KOLOM */}
+            {/* MODAL POP-UP PREVIEW DATA FULL */}
             {previewFile && (
-                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="bg-white rounded-[40px] w-full max-w-[95vw] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 flex flex-col max-h-[90vh] border border-slate-100">
-                        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-[#EDF2FE] rounded-2xl text-[#4f46e5]"><FileSpreadsheet size={24} /></div>
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[100] flex items-center justify-center p-4 lg:p-10 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-[40px] w-full max-w-[1400px] shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 flex flex-col max-h-[90vh] border border-slate-100 relative">
+
+                        {/* Header Modal */}
+                        <div className="p-6 lg:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-white border border-slate-200 rounded-2xl text-[#4f46e5] shadow-sm"><FileSpreadsheet size={28} /></div>
                                 <div>
-                                    <h3 className="font-bold text-xl text-slate-900 leading-tight">Preview Data: <span className="text-[#4f46e5]">{previewFile.fileName}</span></h3>
-                                    <p className="text-xs text-slate-500 mt-0.5">Menampilkan 10 baris pertama dengan struktur penuh aktual dari PostgreSQL.</p>
+                                    <h3 className="font-bold text-2xl text-slate-900 tracking-tight">Preview Dataset</h3>
+                                    <div className="flex items-center gap-2 mt-1 text-sm">
+                                        <span className="text-indigo-600 font-semibold">{previewFile.fileName}</span>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="text-slate-500">Menampilkan 10 baris teratas.</span>
+                                    </div>
                                 </div>
                             </div>
-                            <button onClick={() => setPreviewFile(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-90"><X size={28} /></button>
+                            <button onClick={() => setPreviewFile(null)} className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors active:scale-90 border border-transparent hover:border-red-100">
+                                <X size={24} />
+                            </button>
                         </div>
 
-                        <div className="overflow-x-auto overflow-y-auto custom-scrollbar p-6 bg-[#F8FAFC]">
-                            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                        {/* Konten Tabel */}
+                        <div className="overflow-x-auto overflow-y-auto custom-scrollbar p-6 lg:p-8 bg-[#F8FAFC]">
+                            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                                 <table className="w-max min-w-full text-left border-collapse whitespace-nowrap">
                                     <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
                                         <tr>
-                                            <th className="p-4 pl-6 font-bold text-slate-500 text-[11px] uppercase tracking-widest">No</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Retailer</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Retailer ID</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Invoice Date</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Region</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">State</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">City</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Product</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Price per Unit</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Units Sold</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Total Sales</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Op. Profit</th>
-                                            <th className="p-4 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Op. Margin</th>
-                                            <th className="p-4 pr-6 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Sales Method</th>
+                                            <th className="p-5 pl-8 font-bold text-slate-500 text-[11px] uppercase tracking-widest">No</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Retailer</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Retailer ID</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Invoice Date</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-indigo-600 bg-indigo-50/50">Region</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-indigo-600 bg-indigo-50/50">State</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Product</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Price/Unit</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Units Sold</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Total Sales</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Op. Profit</th>
+                                            <th className="p-5 font-bold text-slate-500 text-[11px] uppercase tracking-widest text-right">Op. Margin</th>
+                                            <th className="p-5 pr-8 font-bold text-slate-500 text-[11px] uppercase tracking-widest">Sales Method</th>
                                         </tr>
                                     </thead>
                                     <tbody className="text-sm">
                                         {isLoadingPreview ? (
-                                            <tr><td colSpan={14} className="p-12 text-center text-slate-500 animate-pulse font-medium"><Loader2 size={24} className="animate-spin inline-block mr-2" /> Memuat data baris...</td></tr>
+                                            <tr>
+                                                <td colSpan={13} className="p-16 text-center text-indigo-500 font-medium bg-white">
+                                                    <div className="flex flex-col items-center justify-center gap-3">
+                                                        <Loader2 size={32} className="animate-spin" />
+                                                        <span className="text-xs uppercase tracking-widest font-bold">Mengekstrak Data Baris...</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
                                         ) : previewData.length > 0 ? previewData.map((row, index) => (
-                                            <tr key={row.id} className="border-b border-slate-50 hover:bg-[#EDF2FE]/30 transition-colors">
-                                                <td className="p-4 pl-6 font-bold text-slate-400">{index + 1}</td>
-                                                <td className="p-4 font-semibold text-slate-900">{row.retailer?.name || ""}</td>
-                                                <td className="p-4 text-slate-500 font-mono text-[10px]">{row.retailerId || ""}</td>
-                                                <td className="p-4">{row.invoiceDate ? <span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span> : ""}</td>
-                                                <td className="p-4 text-slate-600">{row.retailer?.region || row.region || ""}</td>
-                                                <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || row.state || ""}</td>
-                                                <td className="p-4 text-slate-600 font-medium">{row.retailer?.city || row.city || ""}</td>
-                                                <td className="p-4 font-semibold text-slate-700">{row.product || ""}</td>
-                                                <td className="p-4 text-slate-600 font-medium text-right">Rp {Number(row.pricePerUnit || 0).toLocaleString('id-ID')}</td>
-                                                <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{Number(row.unitsSold || 0).toLocaleString('id-ID')}</td>
-                                                <td className="p-4 text-emerald-600 font-bold text-right">Rp {Number(row.totalSales || 0).toLocaleString('id-ID')}</td>
-                                                <td className="p-4 text-[#4f46e5] font-bold text-right bg-[#EDF2FE]/30">Rp {Number(row.operatingProfit || 0).toLocaleString('id-ID')}</td>
-                                                <td className="p-4 text-amber-600 font-bold text-right">{(Number(row.operatingMargin || 0) * 100).toFixed(0)}%</td>
-                                                <td className="p-4 pr-6 text-slate-500 text-xs">{row.salesMethod || ""}</td>
+                                            <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
+                                                <td className="p-5 pl-8 font-bold text-slate-400 group-hover:text-indigo-400">{index + 1}</td>
+                                                <td className="p-5 font-bold text-slate-800">{row.retailer?.name || "-"}</td>
+                                                <td className="p-5 text-slate-400 font-mono text-xs">{row.retailerId || "-"}</td>
+                                                <td className="p-5">
+                                                    {row.invoiceDate ? <span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2.5 py-1.5 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span> : "-"}
+                                                </td>
+                                                {/* PERBAIKAN: Akses langsung ke row.region dan row.state */}
+                                                <td className="p-5 text-slate-600 font-medium bg-slate-50/30">{row.region || "-"}</td>
+                                                <td className="p-5 text-slate-600 font-medium bg-slate-50/30">{row.state || "-"}</td>
+                                                <td className="p-5 font-bold text-slate-700">{row.product || "-"}</td>
+                                                <td className="p-5 text-slate-600 font-medium text-right">Rp {Number(row.pricePerUnit || 0).toLocaleString('id-ID')}</td>
+                                                <td className="p-5 font-black text-slate-800 text-right bg-slate-50/50">{Number(row.unitsSold || 0).toLocaleString('id-ID')}</td>
+                                                <td className="p-5 text-emerald-600 font-bold text-right">Rp {Number(row.totalSales || 0).toLocaleString('id-ID')}</td>
+                                                <td className="p-5 text-[#4f46e5] font-bold text-right bg-[#EDF2FE]/30">Rp {Number(row.operatingProfit || 0).toLocaleString('id-ID')}</td>
+                                                <td className="p-5 text-amber-600 font-bold text-right">{(Number(row.operatingMargin || 0) * 100).toFixed(0)}%</td>
+                                                <td className="p-5 pr-8 text-slate-500 font-medium">{row.salesMethod || "-"}</td>
                                             </tr>
                                         )) : (
                                             <tr>
-                                                <td colSpan={14} className="p-12 text-center text-slate-500 font-medium">Data kosong atau tidak ditemukan.</td>
+                                                <td colSpan={13} className="p-16 text-center">
+                                                    <div className="flex flex-col items-center justify-center text-slate-400">
+                                                        <ServerCrash size={32} className="mb-3 opacity-50" />
+                                                        <span className="font-medium text-sm">Data baris kosong atau gagal dimuat dari database.</span>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         )}
                                     </tbody>

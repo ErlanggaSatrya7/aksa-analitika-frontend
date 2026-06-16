@@ -13,8 +13,8 @@ model users {
   fullName      String
   role          Role
   assignedState String?
-  assignedCity  String?
-  retailerId    String?
+  assignedCity  String?         // Bisa diabaikan/dikosongkan karena tidak dipakai
+  retailerId    String?         // Menunjuk ke 1 dari 6 Brand Retailer
   password      String?
   status        UserStatus      @default(INVITED)
   token         String?
@@ -22,12 +22,15 @@ model users {
   retailer      retailers?      @relation(fields: [retailerId], references: [id])
 }
 
+// ==========================================
+// 1. TABEL RETAILER (HANYA BERISI 6 BRAND)
+// ==========================================
+// Kita hapus region, state, dan city dari sini. 
+// Retailer adalah Brand Nasional (cth: "MATAHARI", "TRANSMART").
 model retailers {
-  id                String              @id @default(uuid())
-  name              String
-  region            String
-  state             String
-  city              String?             // <--- Dibuat Opsional (Bisa Kosong)
+  id                String              @id
+  name              String              @unique
+
   logistic_requests logistic_requests[]
   sales_data        sales_data[]
   users             users[]
@@ -47,22 +50,30 @@ model dataset_uploads {
   model_metrics  model_metrics[]
 }
 
+// ==========================================
+// 2. TABEL TRANSAKSI (SALES DATA)
+// ==========================================
+// Di sinilah Region dan State disimpan karena penjualan terjadi di suatu wilayah.
+// Kolom 'city' sudah RESMI DIHAPUS.
 model sales_data {
   id              String           @id @default(dbgenerated("gen_random_uuid()"))
-  retailerId      String
   invoiceDate     DateTime         @db.Timestamptz(6)
   
+  // Data Geografis Pakem (6 Region, 33 State)
   region          String           
   state           String           
-  city            String?          // <--- Dibuat Opsional (Bisa Kosong)
   
-  product         String
+  // Data Transaksi Pakem
+  product         String           // 6 Kategori Produk
   pricePerUnit    Float
   unitsSold       Int
   totalSales      Float
   operatingProfit Float
   operatingMargin Float
-  salesMethod     String
+  salesMethod     String           // 3 Metode Sales
+  
+  // Relasi ke Brand Retailer (Hanya 6 pilihan)
+  retailerId      String           
   uploadId        String?
   rowId           Int              @default(autoincrement())
   
@@ -72,7 +83,7 @@ model sales_data {
   @@index([invoiceDate])
   @@index([retailerId])
   @@index([uploadId])
-  @@index([region, state, city]) 
+  @@index([region, state]) // Index city sudah dihapus
 }
 
 model logistic_requests {

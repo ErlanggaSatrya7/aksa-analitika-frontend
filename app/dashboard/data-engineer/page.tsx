@@ -37,9 +37,6 @@ export default function DataEngineerDashboard() {
                 }
 
                 // Fetch Metrik Real-Time
-                // const resMetrics = await fetch('http://localhost:8000/api/model/latest-metrics');
-
-                // running lokal dan railway
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
                 const resMetrics = await fetch(`${apiUrl}/api/model/latest-metrics`);
                 if (resMetrics.ok) {
@@ -64,10 +61,8 @@ export default function DataEngineerDashboard() {
         // 2. Fetch Status Server FastAPI
         const checkFastApi = async () => {
             try {
-                // running lokal dan railway
                 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
                 const res = await fetch(`${apiUrl}/api/health`);
-                // const res = await fetch('http://localhost:8000/api/health');
                 if (res.ok) {
                     const data = await res.json();
                     setFastApiStatus('online');
@@ -240,7 +235,7 @@ export default function DataEngineerDashboard() {
                         </div>
                     </div>
 
-                    {/* Card 4: Forecast Status (Dinamis sesuai Rule) */}
+                    {/* Card 4: Forecast Status */}
                     <div className={`bg-white rounded-[32px] p-6 border shadow-[0_8px_30px_rgba(0,0,0,0.03)] hover:-translate-y-1 transition-all duration-300 ${statusColor.replace('text-', 'border-').replace('bg-', '')}`}>
                         <div className="flex justify-between items-start mb-6">
                             <div className={`p-3 rounded-2xl ${statusIconColor}`}><Gauge size={20} /></div>
@@ -317,8 +312,10 @@ export default function DataEngineerDashboard() {
                                     <td className="p-4 font-semibold text-slate-900">{row.retailer?.name || 'N/A'}</td>
                                     <td className="p-4 text-slate-500 font-mono text-[11px]">{row.retailerId || '-'}</td>
                                     <td className="p-4"><span className="text-xs text-[#4f46e5] bg-[#EDF2FE] px-2 py-1 rounded-md font-bold">{new Date(row.invoiceDate).toLocaleDateString('id-ID')}</span></td>
-                                    <td className="p-4 text-slate-600">{row.retailer?.region || '-'}</td>
-                                    <td className="p-4 text-slate-600 font-medium">{row.retailer?.state || '-'}</td>
+                                    {/* --- PERBAIKAN: row.region dan row.state --- */}
+                                    <td className="p-4 text-slate-600">{row.region || '-'}</td>
+                                    <td className="p-4 text-slate-600 font-medium">{row.state || '-'}</td>
+                                    {/* ------------------------------------------- */}
                                     <td className="p-4 font-semibold text-slate-700">{row.product}</td>
                                     <td className="p-4 text-slate-600 font-medium text-right">Rp {row.pricePerUnit?.toLocaleString('id-ID')}</td>
                                     <td className="p-4 font-bold text-slate-800 text-right bg-slate-50/50">{row.unitsSold?.toLocaleString('id-ID')}</td>

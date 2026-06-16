@@ -3,8 +3,23 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        // 1. TANGKAP PARAMETER DARI URL (Untuk Dinamisasi Filter Wilayah)
+        const { searchParams } = new URL(request.url);
+        const stateParam = searchParams.get('state') || 'Nasional';
+
+        // 2. BUAT KONDISI FILTER BERDASARKAN PROVINSI
+        // Jika login sebagai Admin Provinsi, data yang ditarik HANYA milik provinsi tersebut.
+        const whereClause: any = {};
+        if (stateParam.toUpperCase() !== 'NASIONAL') {
+            whereClause.state = {
+                equals: stateParam,
+                mode: 'insensitive' // Memastikan pencarian tetap aman walaupun huruf besar/kecil beda
+            };
+        }
+
+        // 3. TARIK DATA DARI DATABASE MENGGUNAKAN KONDISI WHERE
         const [
             summaryAgg,
             stateAgg,
@@ -13,32 +28,38 @@ export async function GET() {
             rawRetailerShare
         ] = await Promise.all([
             prisma.sales_data.aggregate({
+                where: whereClause,
                 _sum: { unitsSold: true, totalSales: true },
                 _avg: { operatingMargin: true }
             }),
             prisma.sales_data.groupBy({
                 by: ['state'],
+                where: whereClause,
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } }
             }),
             prisma.sales_data.groupBy({
                 by: ['product'],
+                where: whereClause,
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } },
-                take: 5
+                take: 6 // Tampilkan top 6 agar UI proporsional
             }),
             prisma.sales_data.groupBy({
                 by: ['salesMethod'],
+                where: whereClause,
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } }
             }) as any,
             prisma.sales_data.groupBy({
                 by: ['retailerId'],
+                where: whereClause,
                 _sum: { unitsSold: true },
                 orderBy: { _sum: { unitsSold: 'desc' } }
             })
         ]);
 
+        // 4. PERBAIKAN FATAL PEMETAAN RETAILER (Diselaraskan dengan Backend Python)
         const retailerIds = rawRetailerShare.map(r => r.retailerId);
         const retailersMaster = await prisma.retailers.findMany({
             where: { id: { in: retailerIds } },
@@ -47,19 +68,20 @@ export async function GET() {
 
         const consolidatedMap = new Map<string, number>();
 
+        // Peta ID ini SEKARANG SAMA PERSIS dengan RETAILER_MAP di Python MLOps Anda
         const retailerMap: Record<string, string> = {
-            "1000001": "Adidas Official Store",
-            "1000002": "Matahari",
-            "1000003": "Planet Sports",
-            "1000004": "Ramayana",
-            "1000005": "Sports Station",
-            "1000006": "Transmart"
+            "1000001": "RAMAYANA",
+            "1000002": "ADIDAS OFFICIAL STORE",
+            "1000003": "SPORTS STATION",
+            "1000004": "PLANET SPORTS",
+            "1000005": "TRANSMART",
+            "1000006": "MATAHARI"
         };
 
         rawRetailerShare.forEach(item => {
             const rawId = item.retailerId.split('_')[0];
             const detail = retailersMaster.find(r => r.id === rawId);
-            const finalBrandName = retailerMap[rawId] || detail?.name || `Retailer ${rawId}`;
+            const finalBrandName = retailerMap[rawId] || detail?.name || `Mitra Retailer ${rawId}`;
 
             const currentTotal = consolidatedMap.get(finalBrandName) || 0;
             consolidatedMap.set(finalBrandName, currentTotal + Number(item._sum.unitsSold || 0));
@@ -69,17 +91,16 @@ export async function GET() {
             .map(([name, value]) => ({ name, value }))
             .sort((a, b) => b.value - a.value);
 
+        // 5. TREN BULANAN BERDASARKAN WILAYAH
         const dateRange = await prisma.sales_data.aggregate({
+            where: whereClause,
             _min: { invoiceDate: true },
             _max: { invoiceDate: true }
         });
 
-        // ==========================================
-        // PERBAIKAN: Gunakan groupBy alih-alih findMany
-        // Ini akan menurunkan beban memori secara drastis
-        // ==========================================
         const datesData = await prisma.sales_data.groupBy({
             by: ['invoiceDate'],
+            where: whereClause,
             _sum: { unitsSold: true }
         });
 
@@ -102,7 +123,6 @@ export async function GET() {
                 currentDate.setMonth(currentDate.getMonth() + 1);
             }
 
-            // Memproses data yang sudah digabungkan oleh database
             datesData.forEach(row => {
                 if (row.invoiceDate) {
                     const date = new Date(row.invoiceDate);
@@ -118,22 +138,13 @@ export async function GET() {
             });
         }
 
-        const maxStateValue = stateAgg.length > 0 ? Number(stateAgg[0]._sum.unitsSold || 1) : 1;
-
+        // Peta Distribusi Wilayah
         const mapDistribution = stateAgg.map(s => ({
             name: s.state,
             value: Number(s._sum.unitsSold || 0)
         }));
 
-        const topProvinces = stateAgg.slice(0, 7).map(s => {
-            const val = Number(s._sum.unitsSold || 0);
-            return {
-                name: s.state,
-                val: val,
-                pct: `${Math.min(100, Math.round((val / maxStateValue) * 100))}%`
-            };
-        });
-
+        // OUTPUT JSON YANG DIKIRIM KE DASHBOARD UI
         return NextResponse.json({
             summary: {
                 totalUnits: Number(summaryAgg._sum.unitsSold || 0),
@@ -141,13 +152,15 @@ export async function GET() {
                 avgMargin: Number(summaryAgg._avg.operatingMargin || 0) * 100
             },
             mapDistribution,
-            topProvinces,
             trendLine: { labels, values },
             salesMethod: methodAgg.map((m: any) => ({
-                name: m.salesMethod,
+                name: m.salesMethod || "Unknown",
                 value: Number(m._sum.unitsSold || 0)
             })),
-            topProducts: productAgg.map(p => ({ name: p.product, value: Number(p._sum.unitsSold || 0) })),
+            topProducts: productAgg.map((p: any) => ({
+                name: p.product || "Unknown",
+                value: Number(p._sum.unitsSold || 0)
+            })),
             retailerShare
         }, { status: 200 });
 
