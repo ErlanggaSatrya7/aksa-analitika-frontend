@@ -27,6 +27,8 @@ export async function GET() {
             }
         });
 
+        
+
         // 3. Ekstrak angka dari string notes menggunakan Regex
         let championMetrics = { r2: '0.00', mape: '0.00', mae: '0.0' };
 
