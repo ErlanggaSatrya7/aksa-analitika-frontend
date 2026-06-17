@@ -15,7 +15,6 @@ interface DBUser {
 interface RetailerData {
     id: string;
     name: string;
-    states?: string[];
 }
 
 export default function KelolaPenggunaPage() {
@@ -80,44 +79,23 @@ export default function KelolaPenggunaPage() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // --- HELPER: MENGUBAH ANGKA (1000001) MENJADI NAMA BRAND (MATAHARI) ---
-    const getRetailerBrand = (rawId: string) => {
-        if (!rawId) return "Mitra Toko";
-        const brands: Record<string, string> = {
-            '1000001': 'Matahari',
-            '1000002': 'Ramayana',
-            '1000003': 'Sport Station',
-            '1000004': 'Transmart',
-            '1000005': 'Planet Sports',
-            '1000006': 'Foot Locker',
-            '1000007': 'Zalora',
-            '1000008': 'JD Sports',
-            '1000009': 'Adidas Official Store'
+    // --- HELPER: MENDAPATKAN NAMA BRAND DARI ID ---
+    const getRetailerBrand = (id: string) => {
+        if (!id) return "Mitra Toko";
+        // Coba cari dari database aslinya
+        const found = masterRetailers.find(r => r.id === id);
+        if (found) return found.name;
+
+        // Fallback jika API belum selesai loading
+        const fallbackBrands: Record<string, string> = {
+            '1000001': 'RAMAYANA',
+            '1000002': 'ADIDAS OFFICIAL STORE',
+            '1000003': 'SPORTS STATION',
+            '1000004': 'PLANET SPORTS',
+            '1000005': 'TRANSMART',
+            '1000006': 'MATAHARI'
         };
-
-        // Memastikan yang diambil hanya kode angkanya saja (ex: dari 1000001_BALI menjadi 1000001)
-        const prefix = rawId.split('_')[0];
-        return brands[prefix] || brands[rawId] || `Mitra Toko (${prefix})`;
-    };
-
-    // --- HELPER: FILTER DROPDOWN & HAPUS KOTA YANG GANDA ---
-    const getAvailableRetailers = (selectedState: string) => {
-        if (!selectedState) return [];
-        const filtered = masterRetailers.filter(r => {
-            if (r.states && r.states.length > 0) return r.states.includes(selectedState);
-            const stateFormatted = selectedState.replace(/\s+/g, '_').toUpperCase();
-            return r.id.includes(stateFormatted);
-        });
-
-        // Menghapus duplikat toko (Mengabaikan kota)
-        const uniqueBrands = new Map();
-        filtered.forEach(rt => {
-            const brandCode = rt.id.split('_')[0];
-            if (!uniqueBrands.has(brandCode)) {
-                uniqueBrands.set(brandCode, rt);
-            }
-        });
-        return Array.from(uniqueBrands.values());
+        return fallbackBrands[id] || `Brand (${id})`;
     };
 
     const filteredUsers = users.filter(user => {
@@ -134,7 +112,6 @@ export default function KelolaPenggunaPage() {
         if (user.role === 'SUPER_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-purple-100 text-purple-700 text-[11px] font-bold rounded-md"><ShieldCheck size={12} /> Super Admin</span>, scope: 'Nasional (Semua Akses)' };
         if (user.role === 'STATE_ADMIN') return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-teal-100 text-teal-700 text-[11px] font-bold rounded-md"><Building2 size={12} /> Admin Provinsi</span>, scope: user.assignedState ? `Provinsi ${user.assignedState}` : 'Provinsi Belum Diatur' };
 
-        // MURNI MENGAMBIL NAMA BRAND DAN PROVINSI SAJA (MENGABAIKAN KOTA)
         if (user.role === 'RETAILER_ADMIN') {
             if (!user.retailerId) return { badge: <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 bg-amber-100 text-amber-700 text-[11px] font-bold rounded-md"><Store size={12} /> Manajer Retailer</span>, scope: 'Mitra Toko Belum Diatur' };
 
@@ -318,26 +295,30 @@ export default function KelolaPenggunaPage() {
                                 </div>
                             </div>
 
-                            <div className="space-y-4 pt-1 p-4 bg-slate-50 rounded-[20px] border border-slate-100">
-                                <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
-                                <div>
-                                    <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label>
-                                    <div className="relative"><select required value={editFormData.state} onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
-                                </div>
+                            {(editFormData.role === 'STATE_ADMIN' || editFormData.role === 'RETAILER_ADMIN') && (
+                                <div className="space-y-4 pt-1 p-4 bg-slate-50 rounded-[20px] border border-slate-100">
+                                    <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
 
-                                {editFormData.role === 'RETAILER_ADMIN' && (
-                                    <div>
-                                        <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
-                                        <div className="relative">
-                                            <select required disabled={!editFormData.state} value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
-                                                <option value="">{!editFormData.state ? "Pilih Provinsi Terlebih Dahulu" : getAvailableRetailers(editFormData.state).length === 0 ? "Belum ada data toko" : "Pilih Mitra Toko..."}</option>
-                                                {getAvailableRetailers(editFormData.state).map((rt) => <option key={rt.id} value={rt.id}>{getRetailerBrand(rt.id)}</option>)}
-                                            </select>
-                                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                    {editFormData.role === 'RETAILER_ADMIN' && (
+                                        <div>
+                                            <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Pilih Brand / Mitra Toko</label>
+                                            <div className="relative">
+                                                <select required value={editFormData.retailer} onChange={(e) => setEditFormData({ ...editFormData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
+                                                    <option value="">Pilih Brand Retailer Nasional...</option>
+                                                    {masterRetailers.map((rt) => <option key={rt.id} value={rt.id}>{rt.name}</option>)}
+                                                </select>
+                                                <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                            </div>
                                         </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label>
+                                        <div className="relative"><select required value={editFormData.state} onChange={(e) => setEditFormData({ ...editFormData, state: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div>
                                     </div>
-                                )}
-                            </div>
+                                </div>
+                            )}
+
                             <div className="flex gap-3 pt-4">
                                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 px-4 py-3 bg-slate-50 text-slate-600 font-bold text-sm rounded-[20px] hover:bg-slate-100 transition-colors border border-slate-200">Batal</button>
                                 <button type="submit" disabled={isLoading} className="flex-[2] px-4 py-3 bg-[#6A7BFA] text-white font-bold text-sm rounded-[20px] hover:bg-[#5869E8] shadow-[0_8px_20px_rgba(106,123,250,0.3)] transition-all flex items-center justify-center gap-2">{isLoading ? <Loader2 size={18} className="animate-spin" /> : 'Simpan Perubahan'}</button>
@@ -436,20 +417,34 @@ export default function KelolaPenggunaPage() {
                             {formData.role !== 'SUPER_ADMIN' && formData.role !== 'DATA_ENGINEER' && (
                                 <div className="space-y-4 pt-1 p-4 bg-slate-50 rounded-[20px] border border-slate-100 animate-in fade-in slide-in-from-top-3 duration-300">
                                     <p className="text-[11px] font-bold text-[#6A7BFA] uppercase tracking-wider mb-1">Cakupan Wilayah Operasional</p>
-                                    <div><label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label><div className="relative"><select required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value, retailer: '' })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12"><option value="">Pilih Provinsi...</option>{masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}</select><ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" /></div></div>
 
+                                    {/* URUTAN DIBALIK: Brand Dulu, Baru Provinsi */}
                                     {formData.role === 'RETAILER_ADMIN' && (
                                         <div>
-                                            <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Nama Retailer</label>
+                                            <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Pilih Brand / Mitra Toko</label>
                                             <div className="relative">
-                                                <select required disabled={!formData.state} value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] disabled:opacity-60 appearance-none cursor-pointer pr-12">
-                                                    <option value="">{!formData.state ? "Pilih Provinsi Terlebih Dahulu" : getAvailableRetailers(formData.state).length === 0 ? "Belum ada data toko di provinsi ini" : "Pilih Mitra Toko..."}</option>
-                                                    {getAvailableRetailers(formData.state).map((rt) => (<option key={rt.id} value={rt.id}>{getRetailerBrand(rt.id)}</option>))}
+                                                <select required value={formData.retailer} onChange={(e) => setFormData({ ...formData, retailer: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
+                                                    <option value="">Pilih Brand Retailer Nasional...</option>
+                                                    {masterRetailers.map((rt) => (
+                                                        <option key={rt.id} value={rt.id}>{rt.name}</option>
+                                                    ))}
                                                 </select>
                                                 <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                                             </div>
                                         </div>
                                     )}
+
+                                    <div>
+                                        <label className="block text-[12px] font-bold text-slate-600 mb-1.5 ml-1">Provinsi Penugasan</label>
+                                        <div className="relative">
+                                            <select required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="w-full bg-white border border-slate-200 rounded-[14px] px-4 py-3 text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#6A7BFA] appearance-none cursor-pointer pr-12">
+                                                <option value="">Pilih Provinsi...</option>
+                                                {masterStates.map((st, idx) => <option key={idx} value={st}>{st}</option>)}
+                                            </select>
+                                            <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+
                                 </div>
                             )}
                             <div className="bg-blue-50 border border-blue-100 p-3.5 rounded-[16px] flex items-start gap-3"><Lock size={16} className="text-blue-600 shrink-0 mt-0.5" /><p className="text-xs font-semibold text-blue-800 leading-relaxed">Kata sandi awal pengguna baru diset otomatis menjadi <span className="font-bold bg-white px-1.5 py-0.5 rounded border border-blue-200">123</span>.</p></div>
