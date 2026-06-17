@@ -2,9 +2,9 @@
   "name": "aksa-frontend",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
+"scripts": {
     "dev": "next dev",
-    "build": "next build generate && next build",
+    "build": "npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx prisma/seed-admin.ts"
