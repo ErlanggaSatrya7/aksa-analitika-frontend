@@ -92,7 +92,7 @@ model sales_data {
 model logistic_requests {
   id              String         @id @default(uuid())
   retailerId      String
-  state           String         // DITAMBAHKAN: Untuk memfilter inbox Regional
+  state           String         @default("Belum Ditentukan")
   productCategory String
   qtyRequested    Int
   status          LogisticStatus @default(PENDING_REGION)
