@@ -7,7 +7,7 @@ export async function GET() {
         const requests = await prisma.logistic_requests.findMany({
             include: {
                 retailer: {
-                    select: { name: true, city: true, state: true }
+                    select: { name: true }
                 }
             },
             orderBy: { createdAt: 'desc' } // Yang terbaru di atas

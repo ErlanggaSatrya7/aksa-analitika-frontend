@@ -13,9 +13,6 @@ export async function GET(request: Request) {
         // 1. QUERY DATABASE
         // Sesuai schema: tabel 'retailers' berelasi dengan 'sales_data'
         const stores = await prisma.retailers.findMany({
-            where: {
-                city: city
-            },
             include: {
                 sales_data: true // <-- Ini nama relasi yang benar di schema.prisma kamu
             }

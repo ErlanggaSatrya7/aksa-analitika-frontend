@@ -21,7 +21,8 @@ export async function GET(request: Request) {
         });
 
         // Dapatkan list semua toko untuk dropdown
-        const allStoresInCity = await prisma.retailers.findMany({ where: { city: city }, select: { name: true } });
+        // const allStoresInCity = await prisma.retailers.findMany({ where: { city: city }, select: { name: true } });
+        const allStoresInCity = await prisma.retailers.findMany({ select: { name: true } });
         const availableStores = ['Semua Toko', ...allStoresInCity.map(s => s.name)];
 
         let totalRevenue = 0;

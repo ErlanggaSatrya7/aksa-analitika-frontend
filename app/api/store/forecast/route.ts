@@ -69,9 +69,10 @@ export async function POST(request: Request) {
         const newRequest = await prisma.logistic_requests.create({
             data: {
                 retailerId: retailerId,
+                state: 'Belum Ditentukan', // <--- TAMBAHKAN BARIS INI
                 productCategory: productCategory === 'Semua Kategori' ? 'Campuran (General)' : productCategory,
                 qtyRequested: parseInt(qtyRequested),
-                status: 'PENDING_CITY'
+                status: 'PENDING_REGION'
             }
         });
 

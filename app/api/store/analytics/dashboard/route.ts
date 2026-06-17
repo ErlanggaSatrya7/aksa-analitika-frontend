@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     }
 
     try {
-        // 1. CARI DATA RETAILER UNTUK MENDAPATKAN KODE BRAND DAN PROVINSI
+        // 1. CARI DATA RETAILER
         const retailerData = await prisma.retailers.findFirst({
             where: { id: retailerId }
         });
@@ -19,16 +19,11 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Data toko tidak ditemukan di tabel retailers." }, { status: 404 });
         }
 
-        const brandCode = retailerData.name; // Contoh: "1000001"
-        const state = retailerData.state; // Contoh: "DKI Jakarta"
-
-        // 2. TARIK DATA PENJUALAN MENGABAIKAN PERBEDAAN ID KOTA (Menggunakan Kode Brand + State)
+        // 2. TARIK DATA PENJUALAN MENGGUNAKAN ID BRAND NASIONAL
+        // Tidak perlu lagi pakai startsWith atau state, cukup panggil ID-nya langsung
         const sales = await prisma.sales_data.findMany({
             where: {
-                retailerId: {
-                    startsWith: brandCode // Tarik yang berawalan "1000001"
-                },
-                state: state // Dan pastikan provinsinya adalah "DKI Jakarta"
+                retailerId: retailerData.id
             },
             orderBy: {
                 invoiceDate: 'asc'
