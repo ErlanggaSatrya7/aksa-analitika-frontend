@@ -8,7 +8,22 @@ export default function StoreSalesAnalysis() {
     const { data: session } = useSession();
     const user = session?.user as any;
     const retailerId = user?.retailerId || '';
-    const storeName = user?.name ? `Cabang ${user.name}` : 'Toko Anda';
+
+    // --- HELPER: MENDAPATKAN NAMA BRAND DARI ID ---
+    const getRetailerBrand = (id: string) => {
+        if (!id) return "Mitra Toko";
+        const brands: Record<string, string> = {
+            '1000001': 'RAMAYANA',
+            '1000002': 'ADIDAS OFFICIAL STORE',
+            '1000003': 'SPORTS STATION',
+            '1000004': 'PLANET SPORTS',
+            '1000005': 'TRANSMART',
+            '1000006': 'MATAHARI'
+        };
+        return brands[id] || `Brand (${id})`;
+    };
+
+    const storeName = getRetailerBrand(retailerId);
 
     const [isLoading, setIsLoading] = useState(true);
     const [filterCategory, setFilterCategory] = useState('Semua Kategori');
@@ -109,7 +124,7 @@ export default function StoreSalesAnalysis() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div>
                     <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">Analisis Penjualan Toko</h2>
-                    <p className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-1.5"><Activity size={16} className="text-[#4f46e5]" /> Pantau tren harian dan perilaku pembeli di {storeName}.</p>
+                    <p className="text-sm text-slate-500 mt-1 font-medium flex items-center gap-1.5"><Activity size={16} className="text-[#4f46e5]" /> Pantau tren harian dan perilaku pembeli di <span className="font-bold text-[#4f46e5]">{storeName}</span>.</p>
                 </div>
             </div>
 
@@ -164,7 +179,7 @@ export default function StoreSalesAnalysis() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-700 delay-300 relative z-10">
                 <div className="lg:col-span-2 bg-white border border-slate-100 rounded-[40px] shadow-[0_8px_30px_rgba(0,0,0,0.03)] p-6 md:p-8 flex flex-col group">
                     <h3 className="text-xl font-bold text-slate-900 mb-2">Tren Penjualan Harian</h3>
-                    <p className="text-sm text-slate-500 font-medium mb-6">Distribusi volume penjualan di {storeName} per hari.</p>
+                    <p className="text-sm text-slate-500 font-medium mb-6">Distribusi volume penjualan di <span className="font-bold text-slate-600">{storeName}</span> per hari.</p>
                     <div className="w-full h-[350px]">
                         {hasDailyTrend ? (
                             <ReactECharts option={dailyTrendOption} style={{ height: '100%', width: '100%' }} opts={{ renderer: 'svg' }} />

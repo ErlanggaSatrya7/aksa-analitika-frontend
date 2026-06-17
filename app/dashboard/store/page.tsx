@@ -10,6 +10,20 @@ export default function StoreDashboard() {
     const user = session?.user as any;
     const retailerId = user?.retailerId || '';
 
+    // --- HELPER: MENDAPATKAN NAMA BRAND DARI ID ---
+    const getRetailerBrand = (id: string) => {
+        if (!id) return "Mitra Toko";
+        const brands: Record<string, string> = {
+            '1000001': 'RAMAYANA',
+            '1000002': 'ADIDAS OFFICIAL STORE',
+            '1000003': 'SPORTS STATION',
+            '1000004': 'PLANET SPORTS',
+            '1000005': 'TRANSMART',
+            '1000006': 'MATAHARI'
+        };
+        return brands[id] || `Brand (${id})`;
+    };
+
     const [isLoading, setIsLoading] = useState(true);
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [fastApiStatus, setFastApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -22,13 +36,15 @@ export default function StoreDashboard() {
                 .then(res => res.json())
                 .then(data => {
                     setStoreProfile({
-                        name: data?.retailer?.name || 'Cabang Retailer',
-                        location: `${data?.assignedCity || 'Kota'}, Provinsi ${data?.assignedState || 'Wilayah'}`
+                        // Gunakan nama dari API, jika gagal gunakan fungsi helper
+                        name: data?.retailer?.name || getRetailerBrand(user?.retailerId),
+                        // Hapus kota, hanya tampilkan Provinsi
+                        location: data?.assignedState ? `Provinsi ${data.assignedState}` : 'Wilayah Belum Diatur'
                     });
                 })
                 .catch(err => console.error("Fetch profile error:", err));
         }
-    }, [user?.email]);
+    }, [user?.email, user?.retailerId]);
 
     useEffect(() => {
         const checkSystemHealth = async () => {
@@ -61,6 +77,7 @@ export default function StoreDashboard() {
             .finally(() => setIsLoading(false));
     }, [retailerId]);
 
+    // Format ini HANYA dipakai untuk total omzet (karena format dari backend berbentuk angka murni)
     const formatRupiah = (value: number) => {
         const num = Number(value) || 0;
         if (num >= 1_000_000_000_000) return { val: (num / 1_000_000_000_000).toFixed(2), unit: 'Triliun' };
@@ -72,10 +89,11 @@ export default function StoreDashboard() {
     const dataToDisplay = dashboardData;
     const logistik = dataToDisplay?.logisticStatus;
 
-    const isPending = logistik?.status === 'PENDING_CITY';
-    const isApprovedCityOrState = logistik?.status === 'APPROVED_CITY' || logistik?.status === 'APPROVED_STATE';
+    // Menyesuaikan status logistik dengan skema baru yang tidak pakai "CITY"
+    const isPending = logistik?.status === 'PENDING_REGION';
     const isApprovedCenter = logistik?.status === 'APPROVED_CENTER';
-    const isRejected = logistik?.status === 'REJECTED';
+    const isRejected = logistik?.status === 'REJECTED_REGION' || logistik?.status === 'REJECTED_CENTER';
+    const isWaitingCenter = logistik?.status === 'PENDING_CENTER';
 
     const storeBarOption = {
         tooltip: {
@@ -270,12 +288,12 @@ export default function StoreDashboard() {
                                     </p>
                                     <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">Pengajuan {logistik.qtyRequested} Pcs {isPending ? 'sedang ditinjau' : 'telah disetujui'}.</p>
                                 </div>
-                                <div className={`relative ${isApprovedCityOrState ? 'opacity-100' : (isApprovedCenter ? 'opacity-100' : 'opacity-40')}`}>
-                                    <span className={`absolute -left-[27px] top-1 w-3.5 h-3.5 rounded-full ring-4 ring-white ${isApprovedCityOrState ? 'bg-[#4f46e5] animate-pulse' : (isApprovedCenter ? 'bg-emerald-500' : 'bg-slate-200')}`}></span>
-                                    <p className={`text-sm font-bold flex items-center gap-2 ${isApprovedCityOrState ? 'text-[#4f46e5]' : (isApprovedCenter ? 'text-emerald-600' : 'text-slate-500')}`}>
-                                        {isApprovedCenter ? <CheckCircle2 size={16} /> : <Truck size={16} />} Dalam Perjalanan
+                                <div className={`relative ${isWaitingCenter ? 'opacity-100' : (isApprovedCenter ? 'opacity-100' : 'opacity-40')}`}>
+                                    <span className={`absolute -left-[27px] top-1 w-3.5 h-3.5 rounded-full ring-4 ring-white ${isWaitingCenter ? 'bg-[#4f46e5] animate-pulse' : (isApprovedCenter ? 'bg-emerald-500' : 'bg-slate-200')}`}></span>
+                                    <p className={`text-sm font-bold flex items-center gap-2 ${isWaitingCenter ? 'text-[#4f46e5]' : (isApprovedCenter ? 'text-emerald-600' : 'text-slate-500')}`}>
+                                        {isApprovedCenter ? <CheckCircle2 size={16} /> : <Truck size={16} />} Sedang Diproses Pusat
                                     </p>
-                                    <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">Truk logistik {isApprovedCenter ? 'telah tiba di area cabang' : 'sedang menuju cabang'}.</p>
+                                    <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">Truk logistik {isApprovedCenter ? 'telah tiba di area cabang' : 'sedang dipersiapkan menuju cabang'}.</p>
                                 </div>
                                 <div className={`relative ${isApprovedCenter ? 'opacity-100' : 'opacity-40'}`}>
                                     <span className={`absolute -left-[27px] top-1 w-3.5 h-3.5 rounded-full ring-4 ring-white ${isApprovedCenter ? 'bg-[#4f46e5] animate-pulse' : 'bg-slate-200'}`}></span>
@@ -295,13 +313,14 @@ export default function StoreDashboard() {
                         </div>
                         <div className="space-y-5 flex-1 flex flex-col justify-center">
                             {hasData && dataToDisplay.topCategories.length > 0 ? dataToDisplay.topCategories.slice(0, 3).map((cat: any, i: number) => {
-                                const catRev = formatRupiah(cat.revenue);
+                                // PERUBAHAN ADA DI SINI: Kita langsung merender string dari backend (cat.revenue)
+                                // tanpa memasukkannya lagi ke dalam fungsi formatRupiah()
                                 return (
                                     <div key={i} className="group/item cursor-default">
                                         <div className="flex justify-between items-center text-sm mb-2">
                                             <span className="font-bold text-slate-700 truncate pr-2 group-hover/item:text-[#4f46e5] transition-colors">{i + 1}. {cat.name}</span>
                                             <span className="font-black text-slate-900 shrink-0 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">
-                                                Rp {catRev.val} <span className="text-[10px] text-slate-400 font-bold ml-0.5">{catRev.unit}</span>
+                                                {cat.revenue} {/* Langsung Tampilkan String dari API */}
                                             </span>
                                         </div>
                                         <div className="w-full bg-[#EDF2FE] rounded-full h-2 overflow-hidden shadow-inner">
